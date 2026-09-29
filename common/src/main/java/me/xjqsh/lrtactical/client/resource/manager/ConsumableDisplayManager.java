@@ -1,0 +1,43 @@
+package me.xjqsh.lrtactical.client.resource.manager;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParseException;
+import com.tacz.guns.GunMod;
+import com.tacz.guns.resource.manager.JsonDataManager;
+import me.xjqsh.lrtactical.client.resource.display.ConsumableDisplayInstance;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.util.profiling.ProfilerFiller;
+
+import java.util.Map;
+
+/**
+ * 加载 {@code assets/<ns>/display/consumable/*.json}。
+ *
+ * <p>设计与 {@link MeleeDisplayManager} 完全一致（含「单个文件解析失败不影响其它文件」），
+ * 说明见该类注释。</p>
+ *
+ * <p>Like the melee displays, {@code ConsumableDisplayInstance#create} reads geo models, bedrock animations and
+ * Lua scripts from {@code ClientAssetsManager} synchronously, so this listener has to apply after TACZ's; it gets
+ * that from being added after them in {@code ClientSetupEvent#registerClientReloadListeners}.
+ */
+public class ConsumableDisplayManager extends JsonDataManager<ConsumableDisplayInstance> {
+    public ConsumableDisplayManager(Gson pGson) {
+        super(null, pGson, "display/consumable", "LrConsumableDisplay");
+    }
+
+    @Override
+    protected void apply(Map<Identifier, JsonElement> pObject, ResourceManager pResourceManager, ProfilerFiller pProfiler) {
+        dataMap.clear();
+        for (Map.Entry<Identifier, JsonElement> entry : pObject.entrySet()) {
+            Identifier id = entry.getKey();
+            try {
+                var pojo = getGson().fromJson(entry.getValue(), ConsumableDisplayInstance.ConsumableDisplay.class);
+                dataMap.put(id, ConsumableDisplayInstance.create(pojo, id));
+            } catch (JsonParseException | IllegalArgumentException e) {
+                GunMod.LOGGER.error(getMarker(), "Failed to load display file {}", id, e);
+            }
+        }
+    }
+}

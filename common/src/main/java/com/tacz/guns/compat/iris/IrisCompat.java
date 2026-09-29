@@ -1,0 +1,334 @@
+package com.tacz.guns.compat.iris;
+import com.tacz.guns.platform.Platform;
+
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.tacz.guns.GunMod;
+import com.tacz.guns.compat.iris.legacy.IrisCompatLegacy;
+import com.tacz.guns.compat.iris.newly.IrisCompatNewly;
+import com.tacz.guns.init.CompatRegistry;
+import com.tacz.guns.util.VersionRequirement;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import org.jetbrains.annotations.Nullable;
+
+import java.lang.reflect.Method;
+import java.util.function.Supplier;
+
+/**
+ * Iris / Sulkan 光影兼容入口（全部经反射，避免硬依赖）。
+ *
+ * <p>【2026-08-11 更正】本头注原先写「Iris 不兼容 Vulkan 后端、已被 Sulkan 取代、
+ * 26.2 下通常不会加载」——<b>三条全错</b>：Iris 在 26.2 正常在役
+ * （本移植的主测试环境就是 iris 1.11.2+mc26.2，案例①~⑦的诊断全在它上面跑过）；
+ * Sulkan 是给 26.2 内建 Vulkan 后端做光影的<b>另一个独立 Mod</b>（mravatin 开发，
+ * 与 Iris 是并列关系而非取代关系）。</p>
+ *
+ * <p>实际逻辑：</p>
+ * <ul>
+ *   <li>检测到 Iris → 经反射查 {@code IrisApi}/{@code IrisPipelines}（isShaderPackInUse、
+ *       assignPipeline、HandRenderer.ACTIVE 等）；</li>
+ *   <li>检测到 Sulkan → 目前只做到「Mod 存在级」探测（其有无公开 API 未核实），
+ *       存在即走保守回退（如 {@link #shouldDisableScopeMaskUnderShaderPack} 返回 true，
+ *       关闭镜内掩码裁切换取镜身/雾效/自发光完整）；</li>
+ *   <li>都没有 → 返回 false（无光影）。</li>
+ * </ul>
+ */
+public final class IrisCompat {
+    /** 新旧两套反射入口的 Iris 版本分界（{@link VersionRequirement} 谓词语法）。 */
+    private static final String NEWLY_VERSION_REQUIREMENT = ">=1.7.0";
+
+    private static Supplier<Boolean> IS_RENDER_SHADOW_SUPPER = () -> false;
+    private static boolean scopePipelinesAssigned = false;
+    private static int scopePipelineAssignSuccesses = 0;
+    private static boolean loggedScopePipelineAssign = false;
+
+    public static void initCompat() {
+        // Iris 检测：在役主路径（用户实测环境 iris 1.11.2+mc26.2）。
+        // 按 Iris 版本分派新旧两套反射入口（阈值 1.7.0）。
+        Platform.INSTANCE.getModVersion(CompatRegistry.IRIS).ifPresent(version -> {
+            try {
+                if (VersionRequirement.matches(NEWLY_VERSION_REQUIREMENT, version)) {
+                    IS_RENDER_SHADOW_SUPPER = IrisCompatNewly::isRenderShadow;
+                } else {
+                    IS_RENDER_SHADOW_SUPPER = IrisCompatLegacy::isRenderShadow;
+                }
+            } catch (IllegalArgumentException e) {
+                // 版本号无法解析（如开发构建的占位版本号）：26.2 上的 Iris 都在 1.7 之后，按新版入口处理。
+                IS_RENDER_SHADOW_SUPPER = IrisCompatNewly::isRenderShadow;
+            }
+        });
+        // Sulkan 侧没有需要预初始化的静态状态：对它的探测是各方法内即时的
+        // Platform.INSTANCE.isModLoaded("sulkan") 存在级检查（见下面各方法）。
+    }
+
+    public static boolean isRenderShadow() {
+        if (Platform.INSTANCE.isModLoaded(CompatRegistry.IRIS)) {
+            try {
+                return IS_RENDER_SHADOW_SUPPER.get();
+            } catch (Exception e) {
+                return false;
+            }
+        }
+        // Sulkan shadow check placeholder
+        return false;
+    }
+
+    /**
+     * Iris 反射句柄，解析一次后缓存。
+     *
+     * <h3>为什么值得缓存</h3>
+     * {@link #isUsingRenderPack()} 与 {@link #isHandRendererActive()} 在全仓库有 30+ 个调用点，
+     * 其中好几个是<b>逐帧、甚至一帧多次</b>（手部 pass 判定、bob 事件、掩码与合成的闸门）。
+     * 原来每次都要 {@code Class.forName} + {@code getMethod}：前者走类加载器查表，
+     * 后者会<b>返回一份防御性拷贝</b>（每次都分配一个新的 Method 对象）。
+     * 缓存之后只剩一次 {@code invoke}，热路径上的分配直接归零。
+     */
+    private static boolean irisHandlesResolved;
+    @Nullable
+    private static Object irisApiInstance;
+    @Nullable
+    private static Method mIsShaderPackInUse;
+    @Nullable
+    private static Object handRendererInstance;
+    @Nullable
+    private static Method mHandRendererIsActive;
+
+    private static void resolveIrisHandles() {
+        if (irisHandlesResolved) {
+            return;
+        }
+        irisHandlesResolved = true;
+        try {
+            Class<?> irisApiClass = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+            irisApiInstance = irisApiClass.getMethod("getInstance").invoke(null);
+            mIsShaderPackInUse = irisApiClass.getMethod("isShaderPackInUse");
+        } catch (Throwable ignored) {
+            irisApiInstance = null;
+            mIsShaderPackInUse = null;
+        }
+        try {
+            Class<?> handRendererClass = Class.forName("net.irisshaders.iris.pathways.HandRenderer");
+            handRendererInstance = handRendererClass.getField("INSTANCE").get(null);
+            mHandRendererIsActive = handRendererClass.getMethod("isActive");
+        } catch (Throwable ignored) {
+            handRendererInstance = null;
+            mHandRendererIsActive = null;
+        }
+    }
+
+    /**
+     * 本帧「是否在用光影包」的记忆值。
+     *
+     * <p>这个答案在一帧之内<b>不可能变</b>（切换光影是玩家操作，发生在帧与帧之间），
+     * 而它每帧要被问很多次，所以记一次就够。由 {@link #beginFrame()} 在帧首清空。
+     *
+     * <p>注意<b>不能</b>对 {@link #isHandRendererActive()} 这么做 ——
+     * 那个值在一帧<b>内部</b>就会翻转（手部 pass 开始/结束），记住就错了。
+     */
+    private static byte usingRenderPackThisFrame = -1;
+
+    /** 每帧清一次帧内记忆值。挂在 {@code GameRenderer#extract} 的 HEAD。 */
+    public static void beginFrame() {
+        usingRenderPackThisFrame = -1;
+    }
+
+    public static boolean isUsingRenderPack() {
+        if (usingRenderPackThisFrame >= 0) {
+            return usingRenderPackThisFrame != 0;
+        }
+        boolean result = computeUsingRenderPack();
+        usingRenderPackThisFrame = (byte) (result ? 1 : 0);
+        return result;
+    }
+
+    private static boolean computeUsingRenderPack() {
+        // Iris 检查 - 使用反射避免硬依赖
+        if (Platform.INSTANCE.isModLoaded(CompatRegistry.IRIS)) {
+            resolveIrisHandles();
+            if (irisApiInstance == null || mIsShaderPackInUse == null) {
+                return false;
+            }
+            try {
+                return (Boolean) mIsShaderPackInUse.invoke(irisApiInstance);
+            } catch (Throwable e) {
+                return false;
+            }
+        }
+        // Sulkan/Vulkan shader path: 目前没有稳定公开 API 可查询“是否已启用具体光影包”。
+        // 但只要 Sulkan 存在，scope 的离屏 mask + 自定义 pipeline 与其 pass 调度就有兼容风险；
+        // 先按“存在即启用安全回退”处理，宁可失去镜内裁剪，也不要镜身/雾效/自发光层缺失。
+        if (Platform.INSTANCE.isModLoaded("sulkan")) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 把 TACZ 自定义 scope pipeline 显式归类到 Iris 的 hand program。
+     *
+     * <p>26.x Iris 的 {@code IrisPipelines} 只内置映射 vanilla {@code RenderPipelines.*}。
+     * 我们的 {@code scope_body_clipped}/{@code scope_reticle_clipped} 是自建
+     * {@link RenderPipeline}；若不调用 Iris API 的 {@code assignPipeline}，Iris 不知道它属于
+     * hand/entity 哪个 gbuffer program，光影下就可能出现镜身不画、雾效/发光层不进入预期 pass。
+     * 这里使用反射避免对 Iris 硬依赖。</p>
+     */
+    public static boolean assignScopePipelineToHand(RenderPipeline pipeline, String debugName) {
+        if (!Platform.INSTANCE.isModLoaded(CompatRegistry.IRIS)) {
+            return false;
+        }
+        try {
+            Class<?> irisApiClass = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+            Object instance = irisApiClass.getMethod("getInstance").invoke(null);
+            int minor = (Integer) irisApiClass.getMethod("getMinorApiRevision").invoke(instance);
+            if (minor < 3) {
+                if (!loggedScopePipelineAssign) {
+                    loggedScopePipelineAssign = true;
+                    GunMod.LOGGER.warn("[TACZ Scope] Iris API revision {} has no assignPipeline support; scope mask will fall back under shaders.", minor);
+                }
+                return false;
+            }
+            Class<?> irisProgramClass = Class.forName("net.irisshaders.iris.api.v0.IrisProgram");
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            Object handProgram = Enum.valueOf((Class<? extends Enum>) irisProgramClass.asSubclass(Enum.class), "HAND");
+            irisApiClass.getMethod("assignPipeline", RenderPipeline.class, irisProgramClass)
+                    .invoke(instance, pipeline, handProgram);
+            scopePipelineAssignSuccesses++;
+            scopePipelinesAssigned = scopePipelineAssignSuccesses >= 2;
+            if (!loggedScopePipelineAssign) {
+                loggedScopePipelineAssign = true;
+                GunMod.LOGGER.info("[TACZ Scope] Assigned custom scope pipelines to Iris HAND program (latest: {}).", debugName);
+            }
+            return true;
+        } catch (Throwable t) {
+            String msg = t.getMessage();
+            Throwable cause = t.getCause();
+            if ((msg != null && msg.contains("already assigned")) || (cause != null && cause.getMessage() != null && cause.getMessage().contains("already assigned"))) {
+                // Pipeline is already assigned to HAND by Iris, which is expected for vanilla pipelines.
+                return true;
+            }
+            if (!loggedScopePipelineAssign) {
+                loggedScopePipelineAssign = true;
+                GunMod.LOGGER.warn("[TACZ Scope] Failed to assign custom scope pipelines to Iris; scope mask will fall back under shaders.", t);
+            }
+            return false;
+        }
+    }
+
+    // 【已移除 · 2026-09-08】assignCommonEntityPipelinesToHandIfNeeded()：
+    // 曾在 Iris 手部 pass 第一次画抛壳/火光/GPU 高模时，把 vanilla ENTITY_CUTOUT /
+    // ENTITY_TRANSLUCENT / ENTITY_TRANSLUCENT_CULL / ITEM_CUTOUT / ITEM_TRANSLUCENT /
+    // ENERGY_SWIRL 六条管线经 IrisApi.assignPipeline(…, HAND) 归到 HAND program。
+    // 对照 Iris 26.2 分支源码（IrisPipelines.java，1.11.2 对应提交 20e226b14f）：
+    //   1. 这六条管线都已在 IrisPipelines 的静态表里预注册为 getCutout(p)/getTranslucent(p)，
+    //      而这两个函数是【逐 draw 求值】的 —— HandRenderer.INSTANCE.isActive() 时返回
+    //      HAND_CUTOUT_DIFFUSE / HAND_WATER_DIFFUSE，否则返回 ENTITIES_*；也就是说
+    //      手部 pass 里的抛壳/火光本来就走 gbuffers_hand，不需要我们再 assign；
+    //   2. IrisPipelines.assignPipeline 对已注册的管线直接抛
+    //      IllegalStateException("Shader already assigned")，assignScopePipelineToHand
+    //      捕到后按成功处理 —— 所以这六次调用在 1.11.2 上从未生效过，唯一的可见效果是
+    //      ShaderKey.findBestMatch 在抛异常之前打的六行
+    //      "Found perfect program match for minecraft:pipeline/entity_cutout: HAND_CUTOUT"
+    //      WARN，经常被玩家误当成光影异常的元凶；
+    //   3. 若某个 Iris 版本的静态表没有预注册（put 成功），后果是这些 vanilla 管线被钉死成
+    //      常量 HAND_CUTOUT（无 diffuse 变体、手部 uniform 约定），世界里所有实体/物品
+    //      都会用错程序 —— 收益为零、风险为全局。
+    // assignPipeline 只保留给 tacz:pipeline/scope_* 这些我们自己的管线
+    //（见 assignScopePipelineToHand 与 ScopeBodyRenderTypes）。
+
+    public static boolean shouldDisableScopeMaskUnderShaderPack() {
+        // Sulkan 暂无公开等价 API；同样保守回退。
+        if (Platform.INSTANCE.isModLoaded("sulkan")) {
+            return true;
+        }
+        // Iris 深度兼容实验：不再在 shader pack 下直接关闭 scope mask。
+        // 路线是 assignPipeline -> Iris HAND program，同时由 tacz.iris.mixins.json 给 Iris
+        // HAND shader 注入默认关闭的 tacz_ScopeMaskMode 分支；只有当前 draw 携带
+        // ScopeMaskSampler 且 pipeline 是 tacz:pipeline/scope_* 时才启用裁切。
+        return false;
+    }
+
+    /**
+     * @return 当前是否正在 Iris 自己的第一人称手部渲染通道内。
+     *
+     * <p>26.x Iris 开启 shader pack 后不会只走 vanilla {@code GameRenderer#renderItemInHand}。
+     * 它会在 {@code HandRenderer#renderSolid/renderTranslucent} 中直接调用
+     * {@code ItemInHandRenderer#renderHandsWithItems}，并在这个期间把
+     * {@code HandRenderer.ACTIVE} 置为 true。TACZ 原先只靠
+     * {@code GameRendererMixin#renderItemInHand HEAD/RETURN} 判断“手部 pass”，
+     * 因此 Iris hand pass 里会把 {@code bobView} 当成世界 bob，而不是手持物 bob，
+     * 导致持枪/ADS 的自定义走路动画又叠了一层 vanilla view bob —— 表现为光影开启时
+     * 瞄准移动幅度异常变大。</p>
+     */
+    public static boolean isHandRendererActive() {
+        if (!Platform.INSTANCE.isModLoaded(CompatRegistry.IRIS) || !isUsingRenderPack()) {
+            return false;
+        }
+        resolveIrisHandles();
+        if (handRendererInstance == null || mHandRendererIsActive == null) {
+            return false;
+        }
+        try {
+            // 刻意不做帧内缓存：这个值在一帧【内部】就会翻转
+            // （Iris 的 HandRenderer 一帧进出两次），缓存了必错。
+            return (Boolean) mHandRendererIsActive.invoke(handRendererInstance);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+    /** {@code HandRenderer.isRenderingSolid} 的句柄；实例复用上面缓存的 {@link #handRendererInstance}。 */
+    @Nullable
+    private static Method handIsRenderingSolidMethod;
+    private static boolean handRenderingSolidResolved;
+
+    /**
+     * @return 当前是否处于 Iris 手部渲染的<b>实心</b>那一遍（{@code false} = 半透明那一遍）。
+     *
+     * <p>用来区分两次 {@code renderAllFeatures}：Iris 的 {@code HandRenderer} 一帧跑两遍手部，
+     * 而镜内画中画只能在<b>半透明</b>那遍成立 —— 只有它跑在
+     * {@code beginTranslucents() → deferredRenderer.renderAll()} 之后，
+     * {@code colortex0} 里才有已着色的场景。详见 {@code IrisHandTranslucentMixin}。</p>
+     *
+     * <p><b>句柄必须缓存。</b>本方法由 {@code IrisScopeMaskState.applyToGlRenderPass}
+     * 逐 draw call 调用，每次都 {@code Class.forName} + {@code getMethod} 会在热路径上
+     * 反复走反射查表并产生垃圾。这里解析一次（成功或失败都只试一次），之后只剩一次
+     * {@code invoke}。</p>
+     */
+    public static boolean isHandRenderingSolid() {
+        if (!handRenderingSolidResolved) {
+            handRenderingSolidResolved = true;
+            // 实例复用共享缓存，这里只解析自己那一个方法句柄。
+            //
+            // 早前这里自己又解析了一遍实例，并在失败分支里把 handRendererInstance 置空 ——
+            // 那是共享字段，一旦被置空，isHandRendererActive() 也跟着失效，
+            // 手部 pass 判定就此错到底。共享状态只能由它的属主写。
+            resolveIrisHandles();
+            try {
+                handIsRenderingSolidMethod = Class.forName("net.irisshaders.iris.pathways.HandRenderer")
+                        .getMethod("isRenderingSolid");
+            } catch (Throwable ignored) {
+                handIsRenderingSolidMethod = null;
+            }
+        }
+        if (handRendererInstance == null || handIsRenderingSolidMethod == null) {
+            // 解析不到就当作「在实心那遍」—— 保守值，让镜身退回纯 discard（透视 1×），
+            // 而不是去采样一张可能还没着色的 colortex0（那就是黑镜片）。
+            return true;
+        }
+        try {
+            return (Boolean) handIsRenderingSolidMethod.invoke(handRendererInstance);
+        } catch (Throwable ignored) {
+            return true;
+        }
+    }
+
+    // 旧 API - MultiBufferSource 已在 26.2 移除，保留兼容但返回 false
+    @Deprecated
+    public static boolean endBatch(Object bufferSource) {
+        // 26.2 不再需要手动 endBatch，Feature Rendering 系统自动处理
+        return false;
+    }
+
+    // 新 API - 针对 SubmitNodeCollector (26.2 Feature Rendering)
+    public static boolean endBatch(SubmitNodeCollector collector) {
+        return false;
+    }
+}

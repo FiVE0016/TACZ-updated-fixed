@@ -1,0 +1,102 @@
+// Quilt build: the Fabric platform glue (Quilt Loader runs Fabric API mods natively) packaged
+// with quilt.mod.json and launched on Quilt Loader. QSL/QFAPI have no 26.x releases, so the
+// loader-level services come from Fabric API, exactly as Quilt's own 26.x modpacks do.
+plugins {
+    id 'net.fabricmc.fabric-loom'
+    id 'com.gradleup.shadow'
+}
+
+sourceSets.main {
+    java.srcDir project(':common').file('src/main/java')
+    java.srcDir project(':fabric').file('src/main/java')
+    resources.srcDir project(':common').file('src/main/resources')
+    // quilt/src/main/resources carries quilt.mod.json; fabric.mod.json is deliberately not included.
+}
+
+repositories {
+    maven {
+        name = 'Quilt'
+        url = 'https://maven.quiltmc.org/repository/release'
+        content { includeGroupByRegex 'org\\.quiltmc.*' }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    implementation "org.quiltmc:quilt-loader:${quilt_loader_version}"
+    implementation("net.fabricmc.fabric-api:fabric-api:${fabric_api_version}") {
+        exclude group: 'net.fabricmc', module: 'fabric-loader'
+    }
+    compileOnly("maven.modrinth:modmenu:${modmenu_version}") { transitive = false }
+    // Quilt Loader ships Mixin and MixinExtras at runtime but does not expose them for compilation.
+    compileOnly 'net.fabricmc:sponge-mixin:0.17.4+mixin.0.8.7'
+    compileOnly 'io.github.llamalad7:mixinextras-common:0.5.4'
+
+    // Libraries from Quilt Loader's quilt_installer.json. Fabric Loom only reads fabric-installer.json,
+    // so dev runs would otherwise start without them (NoClassDefFoundError: org/objectweb/asm/ClassVisitor).
+    runtimeOnly 'net.fabricmc:sponge-mixin:0.17.4+mixin.0.8.7'
+    runtimeOnly 'org.quiltmc:quilt-json5:1.0.4+final'
+    runtimeOnly 'org.quiltmc:quilt-config:1.3.3'
+    runtimeOnly 'org.ow2.asm:asm:9.10.1'
+    runtimeOnly 'org.ow2.asm:asm-analysis:9.10.1'
+    runtimeOnly 'org.ow2.asm:asm-commons:9.10.1'
+    runtimeOnly 'org.ow2.asm:asm-tree:9.10.1'
+    runtimeOnly 'org.ow2.asm:asm-util:9.10.1'
+    runtimeOnly 'io.github.llamalad7:mixinextras-fabric:0.5.5'
+
+    // Dev runs only, so the config button works there; the release jar does not bundle either mod.
+    runtimeOnly("maven.modrinth:modmenu:${modmenu_version}") { transitive = false }
+    runtimeOnly("me.shedaniel.cloth:cloth-config-fabric:${cloth_config_version}") {
+        exclude group: 'net.fabricmc.fabric-api'
+        exclude group: 'net.fabricmc', module: 'fabric-loader'
+    }
+}
+
+configurations.configureEach {
+    // Quilt Loader provides net.fabricmc.loader.api itself; a second loader on the classpath breaks launch.
+    exclude group: 'net.fabricmc', module: 'fabric-loader'
+}
+
+loom {
+    accessWidenerPath = project(':common').file('src/main/resources/tacz.accesswidener')
+    // Dev runs: Quilt Loader wants the source set's class and resource folders declared as one mod.
+    mods {
+        tacz {
+            sourceSet sourceSets.main
+        }
+    }
+    runs {
+        configureEach {
+            // Loom only sets the fabric.* launch properties; Quilt Loader reads loader.* ones. Without
+            // development mode it does not look for mods on the classpath, so TACZ and Fabric API never load.
+            property 'loader.development', 'true'
+            property 'loader.defaultMixinRemapType', 'static'
+        }
+        client {
+            runDir 'run'
+            vmArg '-Xmx4G'
+            // `-PtaczQuickPlay=<world folder>` opens that singleplayer world straight away.
+            // Loom feeds these into the dev-launch arg file; a trailing `--args=` is swallowed by
+            // net.fabricmc.devlaunchinjector, which rebuilds the program arguments from that file.
+            if (project.hasProperty('taczQuickPlay')) {
+                programArgs '--quickPlaySingleplayer', project.property('taczQuickPlay').toString()
+            }
+        }
+        server {
+            runDir 'run-server'
+            vmArg '-Xmx2G'
+        }
+    }
+}
+
+shadowJar {
+    configurations = [project.configurations.bundle]
+    archiveClassifier = ''
+    rootProject.bundledRelocations.each { from, to -> relocate from, to }
+    rootProject.bundledExclusions.each { exclude it }
+    exclude 'META-INF/maven/**', 'META-INF/services/javax.script.*', 'META-INF/*.SF', 'META-INF/*.DSA',
+            'META-INF/*.RSA', 'module-info.class', 'META-INF/versions/*/module-info.class', 'fabric.mod.json'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+jar { archiveClassifier = 'slim' }
+assemble.dependsOn shadowJar

@@ -1,0 +1,33 @@
+package cn.sh1rocu.tacz.api.event;
+
+import com.tacz.guns.api.event.bus.Event;
+import com.tacz.guns.api.event.bus.EventFactory;
+import net.minecraft.client.renderer.texture.TextureAtlas;
+
+public class TextureStitchEvent extends BaseEvent {
+    private final TextureAtlas atlas;
+
+    public static final Event<PostCallback> POST = EventFactory.createArrayBacked(PostCallback.class, callbacks -> event -> {
+        for (PostCallback callback : callbacks) {
+            callback.post(event);
+        }
+    });
+
+    public interface PostCallback {
+        void post(Post event);
+    }
+
+    public TextureStitchEvent(TextureAtlas atlas) {
+        this.atlas = atlas;
+    }
+
+    public TextureAtlas getAtlas() {
+        return atlas;
+    }
+
+    public static class Post extends TextureStitchEvent {
+        public Post(TextureAtlas map) {
+            super(map);
+        }
+    }
+}

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "quilt_loader": {
+    "group": "com.tacz",
+    "id": "${mod_id}",
+    "version": "${version}",
+    "intermediate_mappings": "net.fabricmc:intermediary",
+    "provides": [
+      "lrtactical",
+      "taczmeshloader"
+    ],
+    "metadata": {
+      "name": "${mod_name}",
+      "description": "Modern and classic firearms with attachments, gun packs and a gun smith table. Unofficial multiloader port of Timeless and Classics Guns: Zero for Minecraft ${minecraft_version}.",
+      "contributors": {
+        "TACZ Dev Team (Serene Wave Studio | Timeless Squad)": "Owner",
+        "Sh1roCu (TaCZ: Refabricated)": "Contributor",
+        "q14433686-arch (TaCZ Refabricated for 26.x)": "Contributor",
+        "LesRaisins (LRTactical)": "Contributor",
+        "VellEagle (TacZ Mesh Loader)": "Contributor"
+      },
+      "contact": {
+        "homepage": "https://github.com/fmpapierz/TACZ-updated",
+        "issues": "https://github.com/fmpapierz/TACZ-updated/issues",
+        "sources": "https://github.com/MCModderAnchor/TACZ"
+      },
+      "license": ["GPL-3.0-only", "CC-BY-NC-ND-4.0"],
+      "icon": "icon.png"
+    },
+    "entrypoints": {
+      "main": "com.tacz.guns.fabric.TaczFabric",
+      "client": "com.tacz.guns.fabric.TaczFabricClient",
+      "modmenu": "com.tacz.guns.fabric.compat.ModMenuIntegration",
+      "jei_mod_plugin": "com.tacz.guns.compat.jei.GunModPlugin",
+      "rei_client": "cn.sh1rocu.tacz.compat.rei.REIClientPlugin",
+      "rei_common": "cn.sh1rocu.tacz.compat.rei.REIPlugin"
+    },
+    "depends": [
+      {
+        "id": "quilt_loader",
+        "versions": ">=${quilt_loader}"
+      },
+      {
+        "id": "minecraft",
+        "versions": "=${minecraft_version}"
+      },
+      {
+        "id": "fabric-api",
+        "versions": "*"
+      }
+    ]
+  },
+  "mixin": [
+    "tacz.mixins.json",
+    "tacz.hooks.mixins.json",
+    "tacz.iris.mixins.json",
+    "tacz.voxy.mixins.json",
+    "tacz.mesh.mixins.json",
+    "tacz.carryon.mixins.json",
+    "lrtactical.mixins.json",
+    "tacz.fabric.mixins.json"
+  ],
+  "access_widener": "tacz.accesswidener",
+  "minecraft": {
+    "environment": "*"
+  }
+}

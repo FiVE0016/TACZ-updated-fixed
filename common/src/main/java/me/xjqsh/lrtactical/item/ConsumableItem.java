@@ -1,0 +1,234 @@
+package me.xjqsh.lrtactical.item;
+
+import me.xjqsh.lrtactical.api.item.IConsumable;
+import me.xjqsh.lrtactical.capability.CustomItemCoolDowns;
+import me.xjqsh.lrtactical.init.ModCapabilities;
+import me.xjqsh.lrtactical.item.consumable.ConsumableData;
+import me.xjqsh.lrtactical.item.index.ConsumableIndex;
+import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffectCategory;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemUseAnimation;
+import net.minecraft.world.inventory.tooltip.TooltipComponent;
+import net.minecraft.world.level.Level;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * 基础消耗品实现（药品/食物）：服务端效果 + 组件自愈，以及<b>有内容包时</b>的
+ * Bedrock/Lua 第一人称渲染（官方 0.4.3 通道，见 {@link #getCustomRenderer()}）。
+ */
+public class ConsumableItem extends Item implements IConsumable, com.tacz.guns.api.item.IAnimationItem,
+        cn.sh1rocu.tacz.api.extension.IItem {
+    public ConsumableItem(Properties properties) {
+        super(properties.stacksTo(Item.ABSOLUTE_MAX_STACK_SIZE));
+    }
+
+    @Override
+    public void inventoryTick(@NotNull ItemStack stack, @NotNull ServerLevel level,
+                              @NotNull Entity entity, @Nullable EquipmentSlot slot) {
+        super.inventoryTick(stack, level, entity, slot);
+        IConsumable.applyComponents(stack, false);
+    }
+
+    @Override
+    public int getUseDuration(@NotNull ItemStack stack, @NotNull LivingEntity entity) {
+        return this.getConsumableIndex(stack).map(index -> index.getData().getUseDuration()).orElse(0);
+    }
+
+    @Override
+    public @NotNull ItemUseAnimation getUseAnimation(@NotNull ItemStack stack) {
+        return ItemUseAnimation.DRINK;
+    }
+
+    @Override
+    public @NotNull InteractionResult use(@NotNull Level level, @NotNull Player player, @NotNull InteractionHand hand) {
+        if (hand == InteractionHand.OFF_HAND || player.isUsingItem()) {
+            return InteractionResult.FAIL;
+        }
+        ItemStack stack = player.getItemInHand(hand);
+        // 【2026-08-27】两端都查冷却，不再只查服务端。
+        // 原来只有服务端查，客户端一律乐观放行 —— 于是「服务端在冷却中、客户端却
+        // startUsingItem」的分叉每次都会发生：客户端走完这轮读条也不会消耗任何东西
+        // （finishUsingItem 的效果段有 !level.isClientSide() 门禁），表现为「读了个空条」。
+        // 客户端这张表由 ServerMessageCustomCooldown 同步、由 PlayerTickEvent.START
+        // 每客户端游戏刻推进（PlayerMixin 注入 Player#tick HEAD，不分端），
+        // 偏差方向是「只会多拒一会儿」，代价远小于分叉。完整论证见
+        // ThrowableItem#use 的方法注释（同一套冷却机制）。
+        CustomItemCoolDowns coolDowns = ModCapabilities.coolDowns(player);
+        boolean onCooldown = getCoolDownId(stack).map(coolDowns::isOnCooldown).orElse(false);
+        if (onCooldown) {
+            return InteractionResult.FAIL;
+        }
+        player.startUsingItem(hand);
+        return InteractionResult.CONSUME;
+    }
+
+    @Override
+    public @NotNull ItemStack finishUsingItem(@NotNull ItemStack stack, @NotNull Level level,
+                                               @NotNull LivingEntity entity) {
+        getConsumableIndex(stack).ifPresent(index -> {
+            if (!level.isClientSide()) {
+                applyEffects(entity, index);
+                if (entity instanceof Player player) {
+                    IdentifierCooldown.add(player, index);
+                    if (!player.getAbilities().instabuild) {
+                        consumeAfterUse(stack, index);
+                    }
+                } else {
+                    consumeAfterUse(stack, index);
+                }
+            }
+        });
+        return stack;
+    }
+
+    private static final class IdentifierCooldown {
+        static void add(Player player, ConsumableIndex index) {
+            var cooldownId = index.getData().getCooldownCategory();
+            if (cooldownId != null && index.getData().getCooldown() > 0) {
+                ModCapabilities.coolDowns(player).addCooldown(cooldownId, index.getData().getCooldown());
+            }
+        }
+    }
+
+    private void consumeAfterUse(ItemStack stack, ConsumableIndex index) {
+        ConsumableData data = index.getData();
+        if (data.hasDurability()) {
+            int newDamage = stack.getDamageValue() + data.getDurabilityDamage();
+            if (newDamage >= data.getMaxDurability()) {
+                stack.shrink(1);
+            } else {
+                stack.set(DataComponents.DAMAGE, newDamage);
+            }
+        } else {
+            stack.shrink(1);
+        }
+    }
+
+    private void applyEffects(LivingEntity entity, ConsumableIndex index) {
+        ConsumableData data = index.getData();
+        if (data.getHeal() > 0f) {
+            entity.heal(data.getHeal());
+        }
+        for (ConsumableData.RemoveEffectSelector selector : data.getRemoveEffects()) {
+            removeEffect(entity, selector);
+        }
+        for (ConsumableData.EffectData effectData : data.getEffects()) {
+            if (entity.getRandom().nextFloat() > effectData.getChance()) {
+                continue;
+            }
+            MobEffectInstance effect = effectData.createInstance();
+            if (effect != null) {
+                entity.addEffect(effect);
+            }
+        }
+        if (entity instanceof Player player && (data.getFood() > 0 || data.getSaturation() > 0)) {
+            player.getFoodData().eat(data.getFood(), data.getSaturation());
+        }
+    }
+
+    private void removeEffect(LivingEntity entity, ConsumableData.RemoveEffectSelector selector) {
+        if (selector.isCategory()) {
+            removeEffectsByCategory(entity, selector.getCategory());
+            return;
+        }
+        if (selector.getEffect() == null) {
+            return;
+        }
+        Holder<MobEffect> effect = BuiltInRegistries.MOB_EFFECT.get(selector.getEffect()).orElse(null);
+        if (effect != null) {
+            entity.removeEffect(effect);
+        }
+    }
+
+    private void removeEffectsByCategory(LivingEntity entity, @Nullable MobEffectCategory category) {
+        if (category == null) {
+            return;
+        }
+        List<Holder<MobEffect>> effects = entity.getActiveEffects().stream()
+                .map(MobEffectInstance::getEffect)
+                .filter(effect -> effect.value().getCategory() == category)
+                .toList();
+        for (Holder<MobEffect> effect : effects) {
+            entity.removeEffect(effect);
+        }
+    }
+
+    @Override
+    public @NotNull Component getName(@NotNull ItemStack stack) {
+        return this.getConsumableIndex(stack)
+                .<Component>map(index -> Component.translatable(index.getDescriptionId()))
+                .orElseGet(() -> super.getName(stack));
+    }
+
+    @Override
+    public boolean isSame(ItemStack stack1, ItemStack stack2) {
+        return IConsumable.super.isSame(stack1, stack2);
+    }
+
+    @Override
+    public Optional<TooltipComponent> getTooltipImage(ItemStack stack) {
+        return this.getConsumableIndex(stack).isPresent()
+                ? Optional.of(new me.xjqsh.lrtactical.inventory.tooltip.ConsumableTooltip(stack))
+                : Optional.empty();
+    }
+
+    /**
+     * 内容包提供的 Bedrock/Lua 渲染器（官方 0.4.3 通道）。说明见
+     * {@link MeleeItem#getCustomRenderer()}；登记点在
+     * {@code ClientSetupEvent#registerBuiltinItemRenderers}。
+     *
+     * <p>没装内容包时不会走到这里 —— {@code items/consumable.json} 用
+     * {@code lrtactical:has_custom_display} 分流回原版占位模型。</p>
+     */
+    @Override
+    public cn.sh1rocu.tacz.compat.fabric.BuiltinItemRendererRegistry.DynamicItemRenderer getCustomRenderer() {
+        return Client.renderer();
+    }
+
+    /**
+     * Client-only: dedicated servers load this item class but have no renderer classes, so the renderer is only
+     * referenced from this nested class.
+     */
+    private static final class Client {
+        private Client() {
+        }
+
+        static cn.sh1rocu.tacz.compat.fabric.BuiltinItemRendererRegistry.DynamicItemRenderer renderer() {
+            return me.xjqsh.lrtactical.client.renderer.item.ConsumableItemRenderer.INSTANCE.get();
+        }
+    }
+
+    // 【刻意不实现 tacz$onEntitySwing】
+    //
+    // 姊妹仓 TaCZ_Renovated 26.2 的同名类实现了它并返回 true，但它们主 mod 没有
+    // 对应的 LivingEntityMixin（其 ILrItemExtension 注释里写明了这点），
+    // 那份实现在 NeoForge 侧是【死代码】，不产生任何行为。
+    //
+    // 本仓不一样：cn.sh1rocu.tacz.mixin.common.LivingEntityMixin#tacz$swingHand
+    // 真的接了这个钩子，返回 true 会在 LivingEntity#swing 的 HEAD 直接
+    // ci.cancel() —— 挥臂动画被整段吞掉。近战/投掷物这样写是对的
+    // （挥砍/拔销由 Lua 状态机负责，vanilla 摆手会打架）；
+    // 但消耗品的 consumable_state_machine.lua 里【没有任何 attack 分支】
+    // （只有 start_use / stop_use），照抄就会变成「拿着药品左键什么动画都没有」。
+    //
+    // 因此这里保持默认（返回 false，不干预 vanilla 挥臂）。
+    // 若日后给消耗品加了攻击/使用动画，再回来评估是否要接管挥臂。
+}

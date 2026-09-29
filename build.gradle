@@ -1,0 +1,163 @@
+plugins {
+    id 'base'
+    id 'net.fabricmc.fabric-loom' version '1.18.2' apply false
+    id 'net.neoforged.moddev' version '2.0.147' apply false
+    id 'net.minecraftforge.gradle' version '7.0.40' apply false
+    id 'com.gradleup.shadow' version '9.4.2' apply false
+}
+
+// Libraries TACZ bundles inside every loader jar. They are shaded and relocated under
+// com.tacz.guns.shadow so they can never clash with another mod's copy (Forge/NeoForge load
+// mods as JPMS modules, where two jars exporting the same package is a hard crash).
+ext.bundledRelocations = [
+        'org.luaj'                : 'com.tacz.guns.shadow.org.luaj',
+        'org.apache.commons.math3': 'com.tacz.guns.shadow.org.apache.commons.math3',
+        'com.maydaymemory.mae'    : 'com.tacz.guns.shadow.com.maydaymemory.mae',
+]
+// Parts of the bundled libraries that TACZ never loads and that must not ship. Gun packs are
+// downloadable content, so their Lua scripts must not reach the host machine: ScriptManager installs no
+// io, os or luajava library, and dropping the classes behind them keeps the capability out of the jar
+// altogether (mod sites reject jars that can run OS commands). Also drops LuaJ's runtime bytecode
+// compiler and its command line and script-engine entry points, none of which TACZ uses.
+ext.bundledExclusions = [
+            'org/luaj/vm2/script/**',
+        'org/luaj/vm2/lib/IoLib*',
+        'org/luaj/vm2/lib/OsLib*',
+        'org/luaj/vm2/lib/jse/JseIoLib*',
+        'org/luaj/vm2/lib/jse/JseOsLib*',
+        'org/luaj/vm2/lib/jse/JseProcess*',
+        'org/luaj/vm2/lib/jse/JsePlatform*',
+        'org/luaj/vm2/lib/jse/LuajavaLib*',
+        'org/luaj/vm2/luajc/**',
+        'org/luaj/vm2/server/**',
+        'lua.class',
+        'luac.class',
+        'luajc.class',
+]
+
+subprojects {
+    apply plugin: 'java-library'
+
+    group = rootProject.maven_group
+    version = rootProject.mod_version
+    base.archivesName = "${rootProject.mod_id}-${project.name}"
+
+    java {
+        toolchain.languageVersion = JavaLanguageVersion.of(25)
+        withSourcesJar()
+    }
+
+    repositories {
+        mavenCentral()
+        maven {
+            name = 'JitPack'
+            url = 'https://jitpack.io'
+            content { includeGroup 'com.github.FiguraMC.luaj' }
+        }
+        maven {
+            name = 'Shedaniel'
+            url = 'https://maven.shedaniel.me/'
+            content {
+                includeGroup 'me.shedaniel.cloth'
+                includeGroup 'me.shedaniel'
+            }
+        }
+        maven {
+            name = 'Architectury'
+            url = 'https://maven.architectury.dev/'
+            content { includeGroup 'dev.architectury' }
+        }
+        maven {
+            name = 'BlameJared'
+            url = 'https://maven.blamejared.com/'
+            content { includeGroup 'mezz.jei' }
+        }
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = 'Modrinth'
+                    url = 'https://api.modrinth.com/maven'
+                }
+            }
+            filter { includeGroup 'maven.modrinth' }
+        }
+    }
+
+    // Every project compiles the common sources, so every project needs the optional
+    // integration APIs on its compile classpath. None of them are required at runtime.
+    dependencies {
+        compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+        compileOnly "me.shedaniel.cloth:cloth-config:${rootProject.cloth_config_version}"
+        compileOnly "mezz.jei:jei-26.3-common-api:${rootProject.jei_version}"
+        // PlayerAnimationLib 1.2.7 (merged Fabric/NeoForge jar), by Modrinth version id.
+        compileOnly("maven.modrinth:player-animation-library:${rootProject.player_animation_lib_version_id}") { transitive = false }
+        // Shoulder Surfing Reloaded has no 26.3 build; its 26.2 Fabric jar still carries the plugin API TACZ compiles against.
+        compileOnly("maven.modrinth:shoulder-surfing-reloaded:${rootProject.shoulder_surfing_version_id}") { transitive = false }
+        // REI's loader-independent API; each loader registers TACZ's REI plugins in its own way.
+        compileOnly("me.shedaniel:RoughlyEnoughItems-api:${rootProject.rei_version}") { transitive = false }
+        // REI's API signatures mention Architectury's FluidStack, which javac needs to resolve overloads.
+        // Architectury has no 26.3 build; any release containing the class serves for compilation.
+        compileOnly("dev.architectury:architectury-fabric:${rootProject.architectury_version}") { transitive = false }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release = 25
+        options.compilerArgs << '-Xmaxerrs' << '100000'
+    }
+
+    def metadataProperties = [
+            version          : rootProject.mod_version,
+            mod_id           : rootProject.mod_id,
+            mod_name         : rootProject.mod_name,
+            license          : rootProject.mod_license,
+            minecraft_version: rootProject.minecraft_version,
+            fabric_loader    : rootProject.fabric_loader_version,
+            quilt_loader     : rootProject.quilt_loader_version,
+            neoforge_version : rootProject.neoforge_version,
+            forge_version    : rootProject.forge_version,
+    ]
+    tasks.withType(ProcessResources).configureEach {
+        inputs.properties metadataProperties
+        filteringCharset = 'UTF-8'
+        filesMatching(['fabric.mod.json', 'quilt.mod.json', 'META-INF/mods.toml', 'META-INF/neoforge.mods.toml']) {
+            expand metadataProperties
+        }
+    }
+
+    tasks.withType(Jar).configureEach {
+        from(rootProject.file('LICENSE')) {
+            rename { "LICENSE_${rootProject.mod_id}" }
+        }
+    }
+}
+
+// Bundled-library wiring shared by the four loader projects.
+configure(subprojects.findAll { it.name != 'common' }) {
+    configurations {
+        bundle {
+            canBeResolved = true
+            canBeConsumed = false
+            transitive = false
+        }
+        implementation.extendsFrom bundle
+    }
+
+    dependencies {
+        bundle "com.github.FiguraMC.luaj:luaj-core:${rootProject.luaj_version}"
+        bundle "com.github.FiguraMC.luaj:luaj-jse:${rootProject.luaj_version}"
+        bundle "org.apache.commons:commons-math3:${rootProject.commons_math3_version}"
+        bundle "com.maydaymemory:mae:${rootProject.mae_version}"
+    }
+}
+
+tasks.register('collectJars', Copy) {
+    group = 'build'
+    description = 'Copies the release jars into build/libs (forge only when forge_enabled=true).'
+    // 'forge' is in this list only when settings.gradle included it; see forge_enabled in gradle.properties.
+    def loaders = ['fabric', 'quilt', 'neoforge', 'forge'].findAll { findProject(":${it}") != null }
+    dependsOn loaders.collect { ":${it}:shadowJar" }
+    from(loaders.collect { project(":${it}").tasks.named('shadowJar').flatMap { it.archiveFile } })
+    into layout.buildDirectory.dir('libs')
+}
+build.dependsOn 'collectJars'

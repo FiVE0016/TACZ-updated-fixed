@@ -1,0 +1,198 @@
+package me.xjqsh.lrtactical.client.resource;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonPrimitive;
+import com.tacz.guns.platform.IdentifiableReloadListener;
+import me.xjqsh.lrtactical.client.resource.display.ConsumableDisplayInstance;
+import me.xjqsh.lrtactical.client.resource.display.MeleeDisplayInstance;
+import me.xjqsh.lrtactical.client.resource.display.ThrowableDisplayInstance;
+import me.xjqsh.lrtactical.client.resource.manager.ConsumableDisplayManager;
+import me.xjqsh.lrtactical.client.resource.manager.MeleeDisplayManager;
+import me.xjqsh.lrtactical.client.resource.manager.ThrowableDisplayManager;
+import net.minecraft.resources.Identifier;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.function.Consumer;
+
+/**
+ * LRTactical 的<b>客户端</b>资源管理器：所有 display 数据缓存在此。
+ *
+ * <p>结构对齐 TACZ 的 {@code ClientAssetsManager}，但只管 LRTactical 自己的
+ * {@code display/melee}、{@code display/throwable} 与 {@code display/consumable} 三类。
+ * 模型（{@code geo_models}）、动画（{@code animations}）、Lua 脚本（{@code scripts}）
+ * <b>刻意不重复加载</b> —— 直接复用 TACZ 的管理器，理由见下。
+ *
+ * <h2>为什么复用 TACZ 的模型/动画/脚本加载器</h2>
+ * {@code MeleeDisplayInstance#create} 里调的是
+ * {@code ClientAssetsManager.INSTANCE.getBedrockModelPOJO/getBedrockAnimations/getScript}。
+ * 这三者在 TACZ 侧是<b>全命名空间扫描</b>的 —— {@code LazyJsonDataManager} 的
+ * eager 谓词（{@code id -> "tacz".equals(id.getNamespace())}）只决定「是否在重载时
+ * 立刻解析」，<b>不</b>限制「是否收录」（见其 {@code prepare}：非 eager 的一律
+ * {@code preparedEntries.put(id, PreparedEntry.lazy(...))}）。
+ * 因此 {@code lrtactical:} 命名空间下的 geo/animation/lua 会被一并收录、按需懒加载。
+ * 再建一套只会重复占内存，还会与 TACZ 的缓存不一致。
+ *
+ * <h2>顺序依赖：必须排在 TACZ 之后（本移植的关键约束）</h2>
+ * 上游用 NeoForge 的 {@code @SubscribeEvent(priority = EventPriority.LOW)} 保证
+ * 「LRTactical 的 display 在 TACZ 的资源之后加载」，因为 {@code create()} 时
+ * <b>同步地</b>要去 TACZ 那里取模型和动画 —— 顺序反了就会满屏
+ * 「no corresponding model found」。
+ *
+ * <p>This port gets that order from registration alone: on every loader, reload listeners without explicit
+ * dependencies apply in the order they were added, and {@code ClientSetupEvent#registerClientReloadListeners}
+ * hands these out right after TACZ's model, animation and script listeners.
+ */
+public enum LrClientAssetsManager {
+    INSTANCE;
+
+    /**
+     * display 专用 Gson。
+     *
+     * <p>与上游的差异：<b>不</b>注册 {@code ItemTransforms} / {@code ItemTransform} 适配器。
+     * 26.2 上这两个 {@code Deserializer} 的构造器已降为包级私有（字节码确认），
+     * 外部包无法实例化；transforms 改由 {@code BlockTransformParser} 在
+     * {@code create()} 阶段解析，POJO 里存原始 {@code JsonObject}。
+     * 详见 {@link MeleeDisplayInstance} 的类注释。
+     *
+     * <p><b>但必须注册 {@code Vector3f}</b>：官方 0.4.3 的 {@code display_offset}
+     * 是一个三元素数组，反序列化目标类型是 {@code org.joml.Vector3f}。
+     * 不注册适配器时 Gson 会退化到反射构造 —— joml 的 {@code Vector3f} 有公开无参构造
+     * 与公开 {@code x/y/z} 字段，理论上也能凑合，但那依赖 joml 的内部字段名，
+     * 且与 TACZ 自己的 display 解析走的是两套规则。这里复用 TACZ 的
+     * {@code Vector3fSerializer}（它同时实现 {@code JsonDeserializer} 与
+     * {@code JsonSerializer}），与 TACZ 侧行为完全一致。
+     */
+    public static final Gson GSON = new GsonBuilder()
+            .setStrictness(com.google.gson.Strictness.LENIENT)
+            .registerTypeAdapter(Identifier.class,
+                    (com.google.gson.JsonDeserializer<Identifier>) (json, type, ctx) ->
+                            Identifier.tryParse(json.getAsString()))
+            .registerTypeAdapter(Identifier.class,
+                    (com.google.gson.JsonSerializer<Identifier>) (src, type, ctx) ->
+                            new JsonPrimitive(src.toString()))
+            .registerTypeAdapter(org.joml.Vector3f.class,
+                    new com.tacz.guns.client.resource.serialize.Vector3fSerializer())
+            .create();
+
+    @Nullable
+    private ThrowableDisplayManager throwableDisplay;
+    @Nullable
+    private MeleeDisplayManager meleeDisplay;
+    @Nullable
+    private ConsumableDisplayManager consumableDisplay;
+
+    /**
+     * 建立并注册三个 display listener。
+     *
+     * <p>Called from {@code ClientSetupEvent#registerClientReloadListeners}, after TACZ's own listeners.
+     *
+     * <p>manager 只建一次（与 TACZ 的 {@code listeners == null} 守卫同理）：
+     * 重复 new 会让已经缓存的 display 全部丢失，而资源重载本身会调用
+     * {@code apply} 重新填充，无需换实例。
+     */
+    public void reloadAndRegister(Consumer<IdentifiableReloadListener> register) {
+        if (throwableDisplay == null) {
+            throwableDisplay = new ThrowableDisplayManager(GSON);
+            meleeDisplay = new MeleeDisplayManager(GSON);
+            consumableDisplay = new ConsumableDisplayManager(GSON);
+        }
+        register.accept(throwableDisplay);
+        register.accept(meleeDisplay);
+        register.accept(consumableDisplay);
+    }
+
+    @Nullable
+    public ThrowableDisplayInstance getThrowableDisplay(Identifier id) {
+        if (throwableDisplay == null) {
+            return null;
+        }
+        ThrowableDisplayInstance exact = throwableDisplay.getData(id);
+        if (exact != null) {
+            return exact;
+        }
+        return findUniqueThrowableDisplayByPath(id);
+    }
+
+    @Nullable
+    public MeleeDisplayInstance getMeleeDisplay(Identifier id) {
+        if (meleeDisplay == null) {
+            return null;
+        }
+        MeleeDisplayInstance exact = meleeDisplay.getData(id);
+        if (exact != null) {
+            return exact;
+        }
+        return findUniqueMeleeDisplayByPath(id);
+    }
+
+    @Nullable
+    public ConsumableDisplayInstance getConsumableDisplay(Identifier id) {
+        if (consumableDisplay == null) {
+            return null;
+        }
+        ConsumableDisplayInstance exact = consumableDisplay.getData(id);
+        if (exact != null) {
+            return exact;
+        }
+        return findUniqueConsumableDisplayByPath(id);
+    }
+
+    /**
+     * 兼容部分组合枪包把 LRTactical 的 data 与 assets 放在不同命名空间的旧打包方式。
+     *
+     * <p>纯 LRTactical 内容包通常保持 {@code data/<ns>/index/...} 与
+     * {@code assets/<ns>/display/...} 同命名空间；但一些“枪包 + 少量刀/投掷物”的组合包
+     * 会把服务端索引挂在枪包主命名空间下，却仍沿用原 LRTactical 资源路径，或反过来。
+     * 旧版 NeoForge 环境下这些包常靠 {@code DisplayId} 或资源覆盖顺序碰巧工作；移植后若只做
+     * 精确 id 查询，就会找不到 display，进而回退到内置测试/占位表现。
+     *
+     * <p>这里仅在“同一路径全资源集中唯一”时回退，避免多个枪包都定义
+     * 类似 {@code m67} 这类常见路径名称时串包。
+     */
+    @Nullable
+    private ThrowableDisplayInstance findUniqueThrowableDisplayByPath(Identifier id) {
+        ThrowableDisplayInstance match = null;
+        for (var entry : throwableDisplay.getAllData().entrySet()) {
+            if (!entry.getKey().getPath().equals(id.getPath())) {
+                continue;
+            }
+            if (match != null) {
+                return null;
+            }
+            match = entry.getValue();
+        }
+        return match;
+    }
+
+    /** 消耗品 display 的 path-only 唯一匹配回退，规则与投掷物完全一致（含「不唯一则不回退」）。 */
+    @Nullable
+    private ConsumableDisplayInstance findUniqueConsumableDisplayByPath(Identifier id) {
+        ConsumableDisplayInstance match = null;
+        for (var entry : consumableDisplay.getAllData().entrySet()) {
+            if (!entry.getKey().getPath().equals(id.getPath())) {
+                continue;
+            }
+            if (match != null) {
+                return null;
+            }
+            match = entry.getValue();
+        }
+        return match;
+    }
+
+    @Nullable
+    private MeleeDisplayInstance findUniqueMeleeDisplayByPath(Identifier id) {
+        MeleeDisplayInstance match = null;
+        for (var entry : meleeDisplay.getAllData().entrySet()) {
+            if (!entry.getKey().getPath().equals(id.getPath())) {
+                continue;
+            }
+            if (match != null) {
+                return null;
+            }
+            match = entry.getValue();
+        }
+        return match;
+    }
+}

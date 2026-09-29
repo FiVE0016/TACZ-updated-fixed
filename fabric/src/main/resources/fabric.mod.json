@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "provides": [
+    "lrtactical",
+    "taczmeshloader"
+  ],
+  "version": "${version}",
+  "name": "${mod_name}",
+  "description": "Modern and classic firearms with attachments, gun packs and a gun smith table. Unofficial multiloader port of Timeless and Classics Guns: Zero for Minecraft ${minecraft_version}.",
+  "authors": [
+    "TACZ Dev Team (Serene Wave Studio | Timeless Squad)"
+  ],
+  "contributors": [
+    "Sh1roCu (TaCZ: Refabricated)",
+    "q14433686-arch (TaCZ Refabricated for 26.x)",
+    "LesRaisins (LRTactical)",
+    "VellEagle (TacZ Mesh Loader)"
+  ],
+  "contact": {
+    "homepage": "https://github.com/fmpapierz/TACZ-updated",
+    "issues": "https://github.com/fmpapierz/TACZ-updated/issues",
+    "sources": "https://github.com/MCModderAnchor/TACZ"
+  },
+  "license": "${license}",
+  "icon": "icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.tacz.guns.fabric.TaczFabric"
+    ],
+    "client": [
+      "com.tacz.guns.fabric.TaczFabricClient"
+    ],
+    "modmenu": [
+      "com.tacz.guns.fabric.compat.ModMenuIntegration"
+    ],
+    "jei_mod_plugin": [
+      "com.tacz.guns.compat.jei.GunModPlugin"
+    ],
+    "rei_client": [
+      "cn.sh1rocu.tacz.compat.rei.REIClientPlugin"
+    ],
+    "rei_common": [
+      "cn.sh1rocu.tacz.compat.rei.REIPlugin"
+    ]
+  },
+  "mixins": [
+    "tacz.mixins.json",
+    "tacz.hooks.mixins.json",
+    "tacz.iris.mixins.json",
+    "tacz.voxy.mixins.json",
+    "tacz.mesh.mixins.json",
+    "tacz.carryon.mixins.json",
+    "lrtactical.mixins.json",
+    "tacz.fabric.mixins.json"
+  ],
+  "accessWidener": "tacz.accesswidener",
+  "depends": {
+    "fabricloader": ">=${fabric_loader}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}",
+    "java": ">=25"
+  },
+  "suggests": {
+    "cloth-config": "*",
+    "carryon": ">=2.11.0"
+  }
+}

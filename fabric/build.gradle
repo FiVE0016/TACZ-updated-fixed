@@ -1,0 +1,55 @@
+plugins {
+    id 'net.fabricmc.fabric-loom'
+    id 'com.gradleup.shadow'
+}
+
+sourceSets.main {
+    java.srcDir project(':common').file('src/main/java')
+    resources.srcDir project(':common').file('src/main/resources')
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+    compileOnly("maven.modrinth:modmenu:${modmenu_version}") { transitive = false }
+
+    // Dev runs only, so the config button works there; the release jar does not bundle either mod.
+    runtimeOnly("maven.modrinth:modmenu:${modmenu_version}") { transitive = false }
+    runtimeOnly("me.shedaniel.cloth:cloth-config-fabric:${cloth_config_version}") {
+        exclude group: 'net.fabricmc.fabric-api'
+        exclude group: 'net.fabricmc', module: 'fabric-loader'
+    }
+}
+
+loom {
+    accessWidenerPath = project(':common').file('src/main/resources/tacz.accesswidener')
+    runs {
+        client {
+            runDir 'run'
+            vmArg '-Xmx4G'
+            // `-PtaczQuickPlay=<world folder>` opens that singleplayer world straight away.
+            // Loom feeds these into the dev-launch arg file; a trailing `--args=` is swallowed by
+            // net.fabricmc.devlaunchinjector, which rebuilds the program arguments from that file.
+            if (project.hasProperty('taczQuickPlay')) {
+                programArgs '--quickPlaySingleplayer', project.property('taczQuickPlay').toString()
+            }
+        }
+        server {
+            runDir 'run-server'
+            vmArg '-Xmx2G'
+        }
+    }
+}
+
+shadowJar {
+    configurations = [project.configurations.bundle]
+    archiveClassifier = ''
+    rootProject.bundledRelocations.each { from, to -> relocate from, to }
+    rootProject.bundledExclusions.each { exclude it }
+    exclude 'META-INF/maven/**', 'META-INF/services/javax.script.*', 'META-INF/*.SF', 'META-INF/*.DSA',
+            'META-INF/*.RSA', 'module-info.class', 'META-INF/versions/*/module-info.class'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+jar { archiveClassifier = 'slim' }
+assemble.dependsOn shadowJar

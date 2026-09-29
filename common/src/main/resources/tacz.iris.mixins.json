@@ -1,0 +1,20 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.tacz.guns.mixin.client.iris",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "com.tacz.guns.mixin.client.iris.IrisCompatMixinPlugin",
+  "mixinextras": {
+    "minVersion": "0.5.0"
+  },
+  "client": [
+    "IrisShaderCreatorMixin",
+    "IrisGlCommandEncoderMixin",
+    "IrisExtendedShaderMixin",
+    "IrisScopeDimensionMixin",
+    "IrisShadowResolutionMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

@@ -1,0 +1,483 @@
+package com.tacz.guns.api.item.gun;
+
+import cn.sh1rocu.tacz.api.extension.IItem;
+import cn.sh1rocu.tacz.util.itemhandler.IItemHandler;
+import cn.sh1rocu.tacz.util.itemhandler.ItemHandlerHelper;
+import com.tacz.guns.api.TimelessAPI;
+import com.tacz.guns.api.entity.ReloadState;
+import com.tacz.guns.api.item.*;
+import com.tacz.guns.api.item.ammo.AmmoSourceRegistry;
+import com.tacz.guns.api.item.attachment.AttachmentType;
+import com.tacz.guns.api.item.builder.AmmoItemBuilder;
+import com.tacz.guns.api.item.builder.GunItemBuilder;
+import com.tacz.guns.client.renderer.item.GunItemRendererWrapper;
+import com.tacz.guns.entity.shooter.ShooterDataHolder;
+import com.tacz.guns.inventory.tooltip.GunTooltip;
+import com.tacz.guns.resource.index.CommonGunIndex;
+import com.tacz.guns.resource.pojo.data.gun.FeedType;
+import com.tacz.guns.resource.pojo.data.gun.GunData;
+import com.tacz.guns.util.AllowAttachmentTagMatcher;
+import com.tacz.guns.util.AttachmentDataUtils;
+import cn.sh1rocu.tacz.compat.fabric.BuiltinItemRendererRegistry;
+import net.minecraft.core.NonNullList;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.inventory.tooltip.TooltipComponent;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+
+import org.apache.commons.lang3.StringUtils;
+import javax.annotation.Nonnull;
+import java.util.*;
+import java.util.function.Supplier;
+
+public abstract class AbstractGunItem extends Item implements IGun, IAnimationItem, IItem {
+    protected AbstractGunItem(Properties pProperties) {
+        super(pProperties);
+    }
+
+    private static Comparator<Map.Entry<Identifier, CommonGunIndex>> idNameSort() {
+        return Comparator.comparingInt(m -> m.getValue().getSort());
+    }
+
+    /**
+     * 开始拉栓时调用，返回 bolt 状态
+     *
+     * @return bolt 状态。ture 代表开始 bolt，false 则代表不开始。
+     */
+    public abstract boolean startBolt(ShooterDataHolder dataHolder, ItemStack gunItem, LivingEntity shooter);
+
+    /**
+     * 拉栓 tick 时调用，返回是否仍在 bolt 状态
+     *
+     * @return 是否仍在 bolt 状态
+     */
+    public abstract boolean tickBolt(ShooterDataHolder dataHolder, ItemStack gunItem, LivingEntity shooter);
+
+    /**
+     * 射击时触发
+     */
+    public abstract void shoot(ShooterDataHolder dataHolder, ItemStack gunItem, Supplier<Float> pitch, Supplier<Float> yaw, LivingEntity shooter);
+
+    /**
+     * 开始换弹时调用
+     */
+    public abstract boolean startReload(ShooterDataHolder dataHolder, ItemStack gunItem, LivingEntity shooter);
+
+    /**
+     * 换弹时每个 tick 调用
+     *
+     * @return 如果返回的类型是 NOT_RELOADING 则下一个 tick 不再继续调用
+     */
+    public abstract ReloadState tickReload(ShooterDataHolder dataHolder, ItemStack gunItem, LivingEntity shooter);
+
+    /**
+     * 尝试打断换弹时调用
+     */
+    public abstract void interruptReload(ShooterDataHolder dataHolder, ItemStack gunItem, LivingEntity shooter);
+
+    /**
+     * 切换开火模式时调用
+     */
+    public abstract void fireSelect(ShooterDataHolder dataHolder, ItemStack gunItem);
+
+    /**
+     * 近战时调用
+     */
+    public abstract void melee(ShooterDataHolder dataHolder, LivingEntity user, ItemStack gunItem);
+
+    /**
+     * 过热 tick 处理<br/>
+     * 默认不做任何事情
+     */
+    public void tickHeat(ShooterDataHolder dataHolder, ItemStack gunItem, LivingEntity shooter) {
+    }
+
+    ;
+
+    /**
+     * 初始化子弹角度和速度
+     *
+     * @param dataHolder     状态数据
+     * @param gunItem        枪械物品
+     * @param shooter        射击者
+     * @param projectile     子弹
+     * @param bulletCnt      多弹丸的子弹序数
+     * @param processedSpeed 修正后的子弹初速
+     * @param inaccuracy     修正后的子弹不准确度
+     * @param pitch          射击方向
+     * @param yaw            射击方向
+     */
+    public void doBulletSpread(ShooterDataHolder dataHolder, ItemStack gunItem, LivingEntity shooter, Projectile projectile,
+                               int bulletCnt, float processedSpeed, float inaccuracy, float pitch, float yaw) {
+        projectile.shootFromRotation(shooter, pitch, yaw, 0.0F, processedSpeed, inaccuracy);
+    }
+
+    /**
+     * 换弹前的检查，完成如下检查：枪内弹药是否已经填满？玩家背包是否有可用弹药？是否为背包直读？
+     *
+     * @param shooter 准备换弹的实体
+     * @param gunItem 枪械物品
+     * @return 是否满足换弹条件
+     */
+    public boolean canReload(LivingEntity shooter, ItemStack gunItem) {
+        Identifier gunId = this.getGunId(gunItem);
+        CommonGunIndex gunIndex = TimelessAPI.getCommonGunIndex(gunId).orElse(null);
+        if (gunIndex == null) {
+            return false;
+        }
+
+        int currentAmmoCount = getCurrentAmmoCount(gunItem);
+        int maxAmmoCount = AttachmentDataUtils.getAmmoCountWithAttachment(gunItem, gunIndex.getGunData());
+        if (currentAmmoCount >= maxAmmoCount) {
+            return false;
+        }
+        // 背包直读不进行换弹
+        if (useInventoryAmmo(gunItem)) {
+            return false;
+        }
+        // 无限备弹不需要消耗实际子弹
+        if (gunIndex.getGunData().getReloadData().isInfinite()) {
+            return true;
+        }
+        // 虚拟备弹处理
+        if (useDummyAmmo(gunItem)) {
+            return getDummyAmmoAmount(gunItem) > 0;
+        }
+        // 检查实体注册的弹药来源；未注册时回退到普通背包
+        return AmmoSourceRegistry.hasAmmo(shooter, gunItem);
+    }
+
+    /**
+     * 将枪内的弹药全部退至背包（如果背包满了会丢到地上）。不会退枪膛内的弹药。
+     * 目前，仅更换弹匣配件时调用。
+     *
+     * @param player  玩家
+     * @param gunItem 枪械物品
+     */
+    @Override
+    public void dropAllAmmo(Player player, ItemStack gunItem) {
+        // 背包直读时不调用退弹
+        if (useInventoryAmmo(gunItem)) {
+            return;
+        }
+        // 上游遗留边界（经签名与数据流复核）：这里仍只接受 Player，且只退弹匣内
+        // getCurrentAmmoCount() 记录的弹药；hasBulletInBarrel() 从未读取或清空。
+        // 当前两个调用方都是玩家在改装/卸下弹匣配件时触发，所以“改为 LivingEntity”
+        // 不是现有玩家流程的缺口；“不会退枪膛内弹药”也与本方法 Javadoc 一致。
+        int ammoCount = getCurrentAmmoCount(gunItem);
+        if (ammoCount <= 0) {
+            return;
+        }
+        Identifier gunId = getGunId(gunItem);
+        TimelessAPI.getCommonGunIndex(gunId).ifPresent(index -> {
+            // 如果使用的是虚拟备弹，返还至虚拟备弹
+            if (useDummyAmmo(gunItem)) {
+                setCurrentAmmoCount(gunItem, 0);
+                // 燃料罐类型的换弹不返还
+                if (index.getGunData().getReloadData().getType().equals(FeedType.FUEL)) {
+                    return;
+                }
+                addDummyAmmoAmount(gunItem, ammoCount);
+                return;
+            }
+
+            Identifier ammoId = index.getGunData().getAmmoId();
+            // 创造模式类型的换弹，只填满子弹总数，不进行任何卸载弹药逻辑
+            if (player.isCreative()) {
+                int maxAmmCount = AttachmentDataUtils.getAmmoCountWithAttachment(gunItem, index.getGunData());
+                setCurrentAmmoCount(gunItem, maxAmmCount);
+                return;
+            }
+            // 燃料罐类型的只清空不返还
+            if (index.getGunData().getReloadData().getType().equals(FeedType.FUEL)) {
+                setCurrentAmmoCount(gunItem, 0);
+                return;
+            }
+            TimelessAPI.getCommonAmmoIndex(ammoId).ifPresent(ammoIndex -> {
+                int stackSize = ammoIndex.getStackSize();
+                int tmpAmmoCount = ammoCount;
+                int roundCount = tmpAmmoCount / (stackSize + 1);
+                for (int i = 0; i <= roundCount; i++) {
+                    int count = Math.min(tmpAmmoCount, stackSize);
+                    ItemStack ammoItem = AmmoItemBuilder.create().setId(ammoId).setCount(count).build();
+                    ItemHandlerHelper.giveItemToPlayer(player, ammoItem);
+                    tmpAmmoCount -= stackSize;
+                }
+                setCurrentAmmoCount(gunItem, 0);
+            });
+        });
+    }
+
+    /**
+     * 枪械寻弹和扣除背包弹药逻辑
+     *
+     * @param itemHandler   目标实体的背包
+     * @param gunItem       枪械物品
+     * @param needAmmoCount 需要的弹药 (物品) 数量
+     * @return 寻找到的弹药 (物品) 数量
+     */
+    @Deprecated
+    public int findAndExtractInventoryAmmos(IItemHandler itemHandler, ItemStack gunItem, int needAmmoCount) {
+        return findAndExtractInventoryAmmo(itemHandler, gunItem, needAmmoCount);
+    }
+
+    /**
+     * 枪械寻弹和扣除背包弹药逻辑
+     *
+     * @param itemHandler   目标实体的背包
+     * @param gunItem       枪械物品
+     * @param needAmmoCount 需要的弹药 (物品) 数量
+     * @return 寻找到的弹药 (物品) 数量
+     */
+    public int findAndExtractInventoryAmmo(IItemHandler itemHandler, ItemStack gunItem, int needAmmoCount) {
+        return AmmoSourceRegistry.consumeAmmo(itemHandler, gunItem, needAmmoCount);
+    }
+
+    /**
+     * 扣除虚拟弹药逻辑，该方法具有通用的实现，放在此处
+     *
+     * @param gunItem       枪械物品
+     * @param needAmmoCount 需要的弹药(物品)数量
+     * @return 找到的弹药(物品)数量
+     */
+    public int findAndExtractDummyAmmo(ItemStack gunItem, int needAmmoCount) {
+        int dummyAmmoCount = getDummyAmmoAmount(gunItem);
+        int extractCount = Math.min(dummyAmmoCount, needAmmoCount);
+        addDummyAmmoAmount(gunItem, -extractCount);
+        return extractCount;
+    }
+
+    /**
+     * 检查枪械是否允许安装指定的物品作为配件
+     */
+    @Override
+    public boolean allowAttachment(ItemStack gun, ItemStack attachmentItem) {
+        IAttachment iAttachment = IAttachment.getIAttachmentOrNull(attachmentItem);
+        IGun iGun = IGun.getIGunOrNull(gun);
+        if (iGun != null && iAttachment != null) {
+            Identifier gunId = iGun.getGunId(gun);
+            Identifier attachmentId = iAttachment.getAttachmentId(attachmentItem);
+            return AllowAttachmentTagMatcher.match(gunId, attachmentId);
+        }
+        return false;
+    }
+
+    /**
+     * 检查枪械是否允许安装某种类型的配件
+     */
+    @Override
+    public boolean allowAttachmentType(ItemStack gun, AttachmentType type) {
+        IGun iGun = IGun.getIGunOrNull(gun);
+        if (iGun != null) {
+            return TimelessAPI.getCommonGunIndex(iGun.getGunId(gun)).map(gunIndex -> {
+                List<AttachmentType> allowAttachments = gunIndex.getGunData().getAllowAttachments();
+                if (allowAttachments == null) {
+                    return false;
+                }
+                return allowAttachments.contains(type);
+            }).orElse(false);
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * 获取枪械的显示名称。
+     *
+     * <h2>为什么读 common 索引而不是 client 索引</h2>
+     * {@code Item#getName(ItemStack)} 是<b>双端公共方法</b>：{@code /give} 的回执消息、
+     * 容器标题、铁砧改名、死亡消息、以及别的 mod 在服务端读 {@code ItemStack#getHoverName}
+     * 的路径都会调用它。此前这里挂着 {@code } 并读
+     * {@code getClientGunIndex}，这在专用服务器上是错的，而且错法与直觉相反：
+     *
+     * <ul>
+     *   <li><b>fabric-loader 会剥离成员上的 {@code @Environment}。</b>
+     *       {@code MinecraftGameProvider#getBuiltinTransforms} 对所有非 Minecraft 的
+     *       mod 类返回 {@code STRIP_ENVIRONMENT}，{@code EnvironmentStrippingData} +
+     *       {@code ClassStripper} 会把环境不匹配的<b>方法/字段整体删掉</b>
+     *       （2026-08-21 读 fabric-loader master 源码确认；loader pin 为 0.19.3）。
+     *       所以专服上这个覆写<b>根本不存在</b>，调用落回 {@code Item#getName}，
+     *       枪械在所有服务端路径上显示的是原版兜底名（如 {@code item.tacz.modern_kinetic_gun}），
+     *       而不是枪包里的名字 —— 这是<b>静默的显示不一致</b>，不是崩服。</li>
+     *   <li>反过来，一旦有人只删注解、不改实现（很容易发生：注解看着像纯文档），
+     *       这行就会在专服上真的去加载
+     *       {@code com.tacz.guns.client.resource.index.ClientGunIndex}，
+     *       那才是 {@code NoClassDefFoundError}。</li>
+     * </ul>
+     *
+     * <p>两种失败模式的根因相同：<b>双端公共方法不该依赖 client 侧索引</b>。
+     * common 与 client 索引读的是同一份 index json、同一个 {@code name} 翻译键
+     * （{@code ClientGunIndex#getName} 也只是把 {@code GunIndexPOJO#getName} 抄一份），
+     * 客户端渲染聊天/GUI 组件时自行翻译，因此客户端显示结果不变、无需 dist 分支，
+     * 而服务端从此拿到与客户端一致的名字。
+     *
+     * <p>多人游戏客户端上 {@code CommonAssetsManager.get()} 会回退到
+     * {@code CommonNetworkCache}（服务端 datapack sync 时下发的同一份 index json），
+     * 因此纯客户端环境同样取得到 common 索引。
+     */
+    @Override
+    @Nonnull
+    public Component getName(@Nonnull ItemStack stack) {
+        Identifier gunId = this.getGunId(stack);
+        Optional<CommonGunIndex> gunIndex = TimelessAPI.getCommonGunIndex(gunId);
+        if (gunIndex.isPresent() && gunIndex.get().getPojo() != null) {
+            String name = gunIndex.get().getPojo().getName();
+            // 与 ClientGunIndex 的兜底保持一致：名字缺失时显示 no_name 提示键
+            return Component.translatable(StringUtils.isBlank(name) ? "custom.tacz.error.no_name" : name);
+        }
+        return super.getName(stack);
+    }
+
+    /**
+     * 获取某一类 TabType 的所有枪械物品的实例。用于填充创造物品栏和枪械制造台。
+     */
+    public static NonNullList<ItemStack> fillItemCategory(GunTabType type) {
+        NonNullList<ItemStack> stacks = NonNullList.create();
+        TimelessAPI.getAllCommonGunIndex().stream().sorted(idNameSort()).forEach(entry -> {
+            CommonGunIndex index = entry.getValue();
+            GunData gunData = index.getGunData();
+            String key = type.name().toLowerCase(Locale.US);
+            String indexType = index.getType();
+            if (key.equals(indexType)) {
+                ItemStack itemStack = GunItemBuilder.create()
+                        .setId(entry.getKey())
+                        .setFireMode(gunData.getFireModeSet().get(0))
+                        .setAmmoCount(gunData.getAmmoAmount())
+                        .setHeatData(gunData.hasHeatData())
+                        .setAmmoInBarrel(true)
+                        .build();
+                stacks.add(itemStack);
+            }
+        });
+        return stacks;
+    }
+
+    /**
+     * 阻止玩家手臂挥动
+     */
+    @Override
+    public boolean tacz$onEntitySwing(ItemStack stack, LivingEntity entity) {
+        return true;
+    }
+
+    @Override
+    public BuiltinItemRendererRegistry.DynamicItemRenderer getCustomRenderer() {
+        return GunItemRendererWrapper.INSTANCE.get();
+    }
+
+    /**
+     * 获取在 Tooltip 中渲染的图片
+     */
+    @Override
+    @Nonnull
+    public Optional<TooltipComponent> getTooltipImage(ItemStack stack) {
+        if (stack.getItem() instanceof IGun iGun) {
+            Optional<CommonGunIndex> optional = TimelessAPI.getCommonGunIndex(this.getGunId(stack));
+            if (optional.isPresent()) {
+                CommonGunIndex gunIndex = optional.get();
+                Identifier ammoId = gunIndex.getGunData().getAmmoId();
+                return Optional.of(new GunTooltip(stack, iGun, ammoId, gunIndex));
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * 获取是否使用弹药直读
+     *
+     * @param gun 枪械
+     * @return 是否使用弹药直读
+     */
+    @Override
+    public boolean useInventoryAmmo(ItemStack gun) {
+        if (gun.getItem() instanceof IGun) {
+            Optional<CommonGunIndex> gunIndexOptional = TimelessAPI.getCommonGunIndex(this.getGunId(gun));
+            if (gunIndexOptional.isEmpty()) {
+                return false;
+            }
+            CommonGunIndex gunIndex = gunIndexOptional.get();
+            // 是否为弹药直读
+            return gunIndex.getGunData().getReloadData().getType().equals(FeedType.INVENTORY);
+        }
+        return false;
+    }
+
+    /**
+     * 获取是否有供给弹药直读的弹药
+     *
+     * @param gun 枪械
+     * @return 是否有供给弹药直读的弹药
+     */
+    @Override
+    public boolean hasInventoryAmmo(LivingEntity shooter, ItemStack gun, boolean needCheckAmmo) {
+        // 如果不是背包直读，则直接返回 false
+        if (!useInventoryAmmo(gun)) {
+            return false;
+        }
+        // 如果不需要检查子弹，则直接返回 true
+        if (!needCheckAmmo) {
+            return true;
+        }
+        // 虚拟备弹处理
+        if (useDummyAmmo(gun)) {
+            return getDummyAmmoAmount(gun) > 0;
+        }
+        // 检查实体注册的弹药来源；未注册时回退到普通背包
+        return AmmoSourceRegistry.hasAmmo(shooter, gun);
+    }
+
+    /**
+     * 获取 RPM
+     *
+     * @param gun 枪械
+     * @return RPM 数值
+     */
+    public int getRPM(ItemStack gun) {
+        if (gun.getItem() instanceof IGun iGun) {
+            return TimelessAPI.getCommonGunIndex(this.getGunId(gun))
+                    .map(CommonGunIndex::getGunData)
+                    .map(gunData -> {
+                        FireMode fireMode = getFireMode(gun);
+                        int rpm = gunData.getRoundsPerMinute(fireMode);
+                        if (iGun.hasHeatData(gun)) {
+                            rpm *= (int) iGun.lerpRPM(gun);
+                        }
+                        return rpm;
+                    }).orElse(300);
+        }
+        return 300;
+    }
+
+    /**
+     * 获取是否可以趴下射击
+     *
+     * @param gun 枪械
+     * @return 是否可以趴下射击
+     */
+    public boolean isCanCrawl(ItemStack gun) {
+        if (gun.getItem() instanceof IGun) {
+            return TimelessAPI.getCommonGunIndex(this.getGunId(gun))
+                    .map(CommonGunIndex::getGunData)
+                    .map(GunData::isCanCrawl)
+                    .orElse(false);
+        }
+        return false;
+    }
+
+    @Override
+    public boolean isSame(ItemStack i, ItemStack j) {
+        IGun iGun1 = IGun.getIGunOrNull(i);
+        IGun iGun2 = IGun.getIGunOrNull(j);
+        if (iGun1 != null && iGun2 != null) {
+            return iGun1.getGunId(i).equals(iGun2.getGunId(j)) && iGun1.getGunDisplayId(i).equals(iGun2.getGunDisplayId(j));
+        }
+        if (i.isEmpty() || j.isEmpty()) {
+            return i.isEmpty() && j.isEmpty();
+        }
+        return ItemStack.matches(i, j);
+    }
+}

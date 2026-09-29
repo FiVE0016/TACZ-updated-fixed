@@ -1,0 +1,40 @@
+// Loader-independent code: compiled against plain (unobfuscated) Minecraft 26.3 only.
+// Every loader project compiles these sources again against its own patched classpath,
+// so nothing here may import a loader API (net.fabricmc, net.neoforged, net.minecraftforge, org.quiltmc).
+plugins {
+    id 'net.fabricmc.fabric-loom'
+}
+
+loom {
+    accessWidenerPath = file('src/main/resources/tacz.accesswidener')
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+
+    // Mixin + MixinExtras annotations. All four loaders ship both at runtime.
+    compileOnly 'net.fabricmc:sponge-mixin:0.17.4+mixin.0.8.7'
+    compileOnly 'io.github.llamalad7:mixinextras-common:0.5.4'
+
+    // Bundled libraries (shaded into each loader jar).
+    compileOnly "com.github.FiguraMC.luaj:luaj-core:${luaj_version}"
+    compileOnly "com.github.FiguraMC.luaj:luaj-jse:${luaj_version}"
+    compileOnly "org.apache.commons:commons-math3:${commons_math3_version}"
+    compileOnly "com.maydaymemory:mae:${mae_version}"
+}
+
+// Guard rail: fail the build if a loader API leaks into common.
+tasks.register('checkLoaderNeutral') {
+    group = 'verification'
+    description = 'Fails if common sources import loader-specific APIs.'
+    def sources = fileTree('src/main/java') { include '**/*.java' }
+    inputs.files sources
+    doLast {
+        def banned = ~/(?m)^\s*import\s+(static\s+)?(net\.fabricmc|org\.quiltmc|net\.neoforged|net\.minecraftforge|fuzs\.forgeconfigapiport)\./
+        def offenders = sources.files.findAll { banned.matcher(it.getText('UTF-8')).find() }
+        if (!offenders.isEmpty()) {
+            throw new GradleException("Loader APIs imported in common:\n" + offenders.collect { '  ' + it }.join('\n'))
+        }
+    }
+}
+tasks.named('check') { dependsOn 'checkLoaderNeutral' }

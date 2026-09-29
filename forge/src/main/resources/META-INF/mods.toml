@@ -1,0 +1,30 @@
+modLoader = "javafml"
+loaderVersion = "[0,)"
+license = "${license}"
+issueTrackerURL = "https://github.com/fmpapierz/TACZ-updated/issues"
+
+[[mods]]
+modId = "${mod_id}"
+version = "${version}"
+displayName = "${mod_name}"
+displayURL = "https://github.com/fmpapierz/TACZ-updated"
+logoFile = "icon.png"
+authors = "TACZ Dev Team (Serene Wave Studio | Timeless Squad)"
+credits = "Sh1roCu (TaCZ: Refabricated), q14433686-arch (TaCZ Refabricated for 26.x), LesRaisins (LRTactical), VellEagle (TacZ Mesh Loader)"
+description = '''
+Modern and classic firearms with attachments, gun packs and a gun smith table. Unofficial multiloader port of Timeless and Classics Guns: Zero for Minecraft ${minecraft_version}.
+'''
+
+[[dependencies.${mod_id}]]
+modId = "forge"
+mandatory = true
+versionRange = "[66,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.${mod_id}]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[${minecraft_version},26.4)"
+ordering = "NONE"
+side = "BOTH"
