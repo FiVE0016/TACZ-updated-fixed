@@ -39,6 +39,10 @@ public final class IrisScopeMaskState {
     private static boolean loggedFailure;
     private static boolean loggedApply;
     private static boolean loggedProgramMismatch;
+    /** TEMP DIAG: counts scope-mask mode writes. */
+    private static int diagWriteSeq;
+    /** TEMP DIAG: counts resolveModeUncached calls. */
+    private static int diagResolveSeq;
 
     /**
      * 本帧当前正在 setup 的 {@code GlRenderPass}，由 {@code IrisGlCommandEncoderMixin} 在
@@ -390,6 +394,14 @@ public final class IrisScopeMaskState {
      * 保证「最后跑的那个」写的是同一套状态。</p>
      */
     private static void writeScopeMaskState(int programId, int mode, Object glRenderPass) {
+        // TEMP DIAG: record ONLY programs that carry the tacz uniform (i.e. patched).
+        int taczDiagModeLoc = GL20C.glGetUniformLocation(programId, UNIFORM_MODE);
+        if (taczDiagModeLoc >= 0 && diagWriteSeq < 20000) {
+            diagWriteSeq++;
+            GunMod.LOGGER.info("[TACZ Scope][write] seq={} program={} mode={} mask={} t={}ms",
+                    diagWriteSeq, programId, mode,
+                    ScopeMaskRenderer.hasMaskThisFrame(), System.currentTimeMillis() % 100000);
+        }
         int modeLocation = GL20C.glGetUniformLocation(programId, UNIFORM_MODE);
         if (modeLocation < 0) {
             // 这个程序没有被注入过 tacz 分支（HAND_ONLY 下绝大多数 Iris 程序都是这种），直接走人。
@@ -482,6 +494,11 @@ public final class IrisScopeMaskState {
      * 鍙栬€屼唬涔嬬殑鏄?{@code getCreateInfo()} 鈥斺€?鍚庤€呮槸涓?record锛寋@code name()}
      * 鐩存帴缁欏嚭褰㈠ {@code tacz:pipeline/scope_body_clipped} 鐨勬爣璇嗐€?     */
     private static int resolveModeUncached(Object glPipeline) {
+        // TEMP DIAG: print the pipeline name this method actually sees.
+        if (diagResolveSeq < 400) {
+            diagResolveSeq++;
+            GunMod.LOGGER.info("[TACZ Scope][resolve] seq={} raw={}", diagResolveSeq, String.valueOf(taczResolvePipelineId(glPipeline)));
+        }
         try {
             String pipelineId = taczResolvePipelineId(glPipeline);
             if (pipelineId == null || pipelineId.isEmpty()) {
