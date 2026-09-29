@@ -1,0 +1,170 @@
+﻿=== TaCZ OIT probe round 4 ===
+javap: C:\Program Files\Microsoft\jdk-25.0.3.9-hotspot\bin\javap.exe
+extracted: OitRenderPassProvider
+extracted: FrontendRenderPass
+extracted: OitRenderPassProvider_Parameters
+extracted: RenderPipeline_Builder
+extracted: RenderPipelines
+
+#################### RESULT: OIT define values ####################
+  WAVELET_RANK                       -> (int not in next 5 lines)
+  COEFF_COUNT                        -> (int not in next 5 lines)
+  COEFF_ATTACHMENT_COUNT             -> (int not in next 5 lines)
+  ALPHA_ONLY                         -> (int not in next 5 lines)
+  DEPTH_BOUNDS                       -> (int not in next 5 lines)
+  ALPHA_ONLY                         -> (int not in next 5 lines)
+  TRANSMITTANCE                      -> (int not in next 5 lines)
+  ACCUMULATE                         -> (int not in next 5 lines)
+  ADDITIVE                           -> (int not in next 5 lines)
+  ADDITIVE                           -> (int not in next 5 lines)
+  ADDITIVE                           -> (int not in next 5 lines)
+  ADDITIVE                           -> (int not in next 5 lines)
+
+#################### RenderPipeline.Builder: define / target methods ####################
+  private java.util.Optional<net.minecraft.client.renderer.ShaderDefines$Builder> definesBuilder;
+  private final com.mojang.renderpearl.api.pipeline.ColorTargetState[] colorTargetStates;
+  private int activeColorTargetStateCount;
+  public com.mojang.renderpearl.api.pipeline.RenderPipeline$Builder withShaderDefine(java.lang.String);
+  public com.mojang.renderpearl.api.pipeline.RenderPipeline$Builder withShaderDefine(java.lang.String, int);
+  public com.mojang.renderpearl.api.pipeline.RenderPipeline$Builder withShaderDefine(java.lang.String, float);
+  public com.mojang.renderpearl.api.pipeline.RenderPipeline$Builder withColorTargetState(int, com.mojang.renderpearl.api.pipeline.ColorTargetState);
+  public com.mojang.renderpearl.api.pipeline.RenderPipeline$Builder withColorTargetStates(int, int, java.util.function.Supplier<com.mojang.renderpearl.api.pipeline.ColorTargetState>);
+  public com.mojang.renderpearl.api.pipeline.RenderPipeline$Builder withUnusedColorTargetState(int);
+  public com.mojang.renderpearl.api.pipeline.RenderPipeline$Builder withColorTargetState(com.mojang.renderpearl.api.pipeline.ColorTargetState);
+
+#################### OitRenderPassProvider\ ####################
+  Compiled from "OitRenderPassProvider.java"
+  public final class net.minecraft.client.renderer.oit.OitRenderPassProvider$Parameters {
+  private com.mojang.renderpearl.api.textures.GpuTextureView depthBoundsTargetView;
+  private final com.mojang.renderpearl.api.textures.GpuTextureView[] transmittanceTargetViews;
+  private final com.mojang.renderpearl.api.textures.GpuTextureView accumulateTargetView;
+  private final com.mojang.renderpearl.api.textures.GpuTextureView depthTextureView;
+  public net.minecraft.client.renderer.oit.OitRenderPassProvider$Parameters(com.mojang.renderpearl.api.textures.GpuTextureView, com.mojang.renderpearl.api.textures.GpuTextureView[], com.mojang.renderpearl.api.textures.GpuTextureView, com.mojang.renderpearl.api.textures.GpuTextureView);
+  public void setDepthBoundsTargetView(com.mojang.renderpearl.api.textures.GpuTextureView);
+  }
+
+#################### createTransmittancePass -- colour attachments ####################
+  47: invokestatic  #25                 // Method createTransmittancePass:(Ljava/util/function/Supplier;Lnet/minecraft/client/renderer/oit/OitRenderPassProvider$Parameters;)Lcom/mojang/renderpearl/api/commands/RenderPass;
+  50: astore_3
+  51: goto          73
+  54: aload_1
+  55: aload_2
+  56: invokestatic  #28                 // Method createAccumulatePass:(Ljava/util/function/Supplier;Lnet/minecraft/client/renderer/oit/OitRenderPassProvider$Parameters;)Lcom/mojang/renderpearl/api/commands/RenderPass;
+  59: astore_3
+  60: goto          73
+  63: new           #31                 // class java/lang/IllegalArgumentException
+  66: dup
+  67: ldc           #33                 // String Invalid OIT stage.
+  69: invokespecial #35                 // Method java/lang/IllegalArgumentException."<init>":(Ljava/lang/String;)V
+  72: athrow
+  73: aload_3
+  74: areturn
+  
+
+---- createAccumulatePass ----
+  56: invokestatic  #28                 // Method createAccumulatePass:(Ljava/util/function/Supplier;Lnet/minecraft/client/renderer/oit/OitRenderPassProvider$Parameters;)Lcom/mojang/renderpearl/api/commands/RenderPass;
+  59: astore_3
+  60: goto          73
+  63: new           #31                 // class java/lang/IllegalArgumentException
+  66: dup
+  67: ldc           #33                 // String Invalid OIT stage.
+  69: invokespecial #35                 // Method java/lang/IllegalArgumentException."<init>":(Ljava/lang/String;)V
+  72: athrow
+  73: aload_3
+  74: areturn
+  
+
+#################### FrontendRenderPass#setPipeline -- the assertion ####################
+  Code:
+  0: aload_1
+  1: instanceof    #114                // class com/mojang/renderpearl/frontend/FrontendRenderPipeline
+  4: ifeq          15
+  7: aload_1
+  8: checkcast     #114                // class com/mojang/renderpearl/frontend/FrontendRenderPipeline
+  11: astore_2
+  12: goto          25
+  15: new           #116                // class java/lang/IllegalArgumentException
+  18: dup
+  19: ldc           #118                // String Pipeline must be instance of FrontendCompiledRenderPipeline
+  21: invokespecial #120                // Method java/lang/IllegalArgumentException."<init>":(Ljava/lang/String;)V
+  24: athrow
+  25: aload_2
+  26: invokevirtual #121                // Method com/mojang/renderpearl/frontend/FrontendRenderPipeline.colorTargetStates:()Ljava/util/List;
+  29: astore_3
+  30: aload_3
+  31: invokeinterface #125,  1          // InterfaceMethod java/util/List.size:()I
+  36: aload_0
+  37: getfield      #60                 // Field colorAttachments:Ljava/util/List;
+  40: invokeinterface #125,  1          // InterfaceMethod java/util/List.size:()I
+  ----------------------------------
+  19: ldc           #118                // String Pipeline must be instance of FrontendCompiledRenderPipeline
+  21: invokespecial #120                // Method java/lang/IllegalArgumentException."<init>":(Ljava/lang/String;)V
+  24: athrow
+  25: aload_2
+  26: invokevirtual #121                // Method com/mojang/renderpearl/frontend/FrontendRenderPipeline.colorTargetStates:()Ljava/util/List;
+  29: astore_3
+  30: aload_3
+  31: invokeinterface #125,  1          // InterfaceMethod java/util/List.size:()I
+  36: aload_0
+  37: getfield      #60                 // Field colorAttachments:Ljava/util/List;
+  40: invokeinterface #125,  1          // InterfaceMethod java/util/List.size:()I
+  45: if_icmpeq     58
+  48: new           #78                 // class java/lang/IllegalStateException
+  51: dup
+  52: ldc           #128                // String Render pass color attachment count must match pipeline color target state count.
+  54: invokespecial #82                 // Method java/lang/IllegalStateException."<init>":(Ljava/lang/String;)V
+  57: athrow
+  58: iconst_0
+  59: istore        4
+  61: iload         4
+  63: aload_0
+  ----------------------------------
+  67: invokeinterface #125,  1          // InterfaceMethod java/util/List.size:()I
+  72: if_icmpge     161
+  75: aload_0
+  76: getfield      #60                 // Field colorAttachments:Ljava/util/List;
+  79: iload         4
+  81: invokeinterface #130,  2          // InterfaceMethod java/util/List.get:(I)Ljava/lang/Object;
+  86: checkcast     #134                // class com/mojang/renderpearl/api/commands/RenderPassDescriptor$Attachment
+  89: astore        5
+  91: aload         5
+  93: ifnonnull     99
+  96: goto          155
+  99: aload_3
+  100: iload         4
+  102: invokeinterface #130,  2          // InterfaceMethod java/util/List.get:(I)Ljava/lang/Object;
+  107: checkcast     #136                // class com/mojang/renderpearl/api/pipeline/ColorTargetState
+  110: astore        6
+  112: aload         6
+  114: ifnull        140
+  117: aload         6
+  119: invokevirtual #138                // Method com/mojang/renderpearl/api/pipeline/ColorTargetState.format:()Lcom/mojang/renderpearl/api/GpuFormat;
+  122: aload         5
+  ----------------------------------
+  81: invokeinterface #130,  2          // InterfaceMethod java/util/List.get:(I)Ljava/lang/Object;
+  86: checkcast     #134                // class com/mojang/renderpearl/api/commands/RenderPassDescriptor$Attachment
+  89: astore        5
+  91: aload         5
+  93: ifnonnull     99
+  96: goto          155
+  99: aload_3
+  100: iload         4
+  102: invokeinterface #130,  2          // InterfaceMethod java/util/List.get:(I)Ljava/lang/Object;
+  107: checkcast     #136                // class com/mojang/renderpearl/api/pipeline/ColorTargetState
+  110: astore        6
+  112: aload         6
+  114: ifnull        140
+  117: aload         6
+  119: invokevirtual #138                // Method com/mojang/renderpearl/api/pipeline/ColorTargetState.format:()Lcom/mojang/renderpearl/api/GpuFormat;
+  122: aload         5
+  124: invokevirtual #142                // Method com/mojang/renderpearl/api/commands/RenderPassDescriptor$Attachment.textureView:()Lcom/mojang/renderpearl/api/textures/GpuTextureView;
+  127: invokeinterface #146,  1          // InterfaceMethod com/mojang/renderpearl/api/textures/GpuTextureView.texture:()Lcom/mojang/renderpearl/api/textures/GpuTexture;
+  132: invokeinterface #152,  1          // InterfaceMethod com/mojang/renderpearl/api/textures/GpuTexture.getFormat:()Lcom/mojang/renderpearl/api/GpuFormat;
+  137: if_acmpeq     155
+  140: new           #78                 // class java/lang/IllegalStateException
+  ----------------------------------
+
+======================================================
+Full log written to: C:\Users\FiVE\Downloads\TACZ-updated-main\oit_probe4.txt
+Paste ONLY the 'RESULT: OIT define values' section.
+======================================================

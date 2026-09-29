@@ -1,0 +1,49 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "cn.sh1rocu.tacz.mixin",
+  "plugin": "cn.sh1rocu.tacz.util.CompatMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "mixinextras": {
+    "minVersion": "0.5.0"
+  },
+  "mixins": [
+    "common.AbstractMinecartMixin",
+    "common.BundlePacketMixin",
+    "common.EntityMixin",
+    "common.LivingEntityHurtMixin",
+    "common.LivingEntityMixin",
+    "common.LootTableMixin",
+    "common.PackRepositoryMixin",
+    "common.PersistentEntitySectionManagerMixin",
+    "common.PlayerListMixin",
+    "common.PlayerMixin",
+    "common.ServerLevelMixin",
+    "common.ServerPacksSourceMixin",
+    "common.itemhandler.AbstractHorseMixin",
+    "common.itemhandler.LivingEntityMixin",
+    "common.itemhandler.PlayerMixin"
+  ],
+  "client": [
+    "accessor.BlockableEventLoopAccessor",
+    "accessor.ScreenAccessor",
+    "client.AbstractPlayerMixin",
+    "client.ClientLevelMixin",
+    "client.CreateWorldScreenMixin",
+    "client.GuiMixin",
+    "client.KeyboardHandlerMixin",
+    "client.LivingEntityRendererMixin",
+    "client.MinecraftMixin",
+    "client.MinecraftUseRestartMixin",
+    "client.MouseHandlerMixin",
+    "client.TextureAtlasMixin",
+    "compat.punchy.PunchyArmRendererMixin",
+    "compat.punchy.PunchyHandEquipStateMachineMixin",
+    "compat.punchy.PunchyHandRenderBobContextMixin",
+    "compat.punchy.PunchyMovementStateMachineMixin"
+  ],
+  "_comment": "Loader-independent hooks: these mixins fire TACZ's own events (cn.sh1rocu.tacz.api.event) from vanilla code paths on every loader. CompatMixinPlugin only applies compat.<mod> mixins (e.g. Punchy's) when that mod is installed.",
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

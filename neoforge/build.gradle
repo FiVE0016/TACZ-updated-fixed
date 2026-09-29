@@ -1,0 +1,64 @@
+plugins {
+    id 'net.neoforged.moddev'
+    id 'com.gradleup.shadow'
+}
+
+sourceSets.main {
+    java.srcDir project(':common').file('src/main/java')
+    resources.srcDir project(':common').file('src/main/resources')
+}
+
+neoForge {
+    version = neoforge_version
+
+    runs {
+        client {
+            client()
+            gameDirectory = project.file('run')
+            jvmArgument '-Xmx4G'
+            // `-PtaczQuickPlay=<world folder>` opens that singleplayer world straight away.
+            if (project.hasProperty('taczQuickPlay')) {
+                programArguments.addAll('--quickPlaySingleplayer', project.property('taczQuickPlay').toString())
+            }
+        }
+        server {
+            server()
+            gameDirectory = project.file('run-server')
+            programArgument '--nogui'
+        }
+    }
+
+    mods {
+        tacz {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+// Let the dev server read console commands typed into the Gradle terminal.
+tasks.named('runServer') { standardInput = System.in }
+
+configurations {
+    // Non-mod libraries must be on the game layer's classpath for dev runs.
+    additionalRuntimeClasspath.extendsFrom bundle
+}
+
+dependencies {
+    // REI's NeoForge API holds the annotations REI scans for to find TACZ's plugins.
+    compileOnly("me.shedaniel:RoughlyEnoughItems-api-neoforge:${rei_version}") { transitive = false }
+
+    // Dev runs only, so the config button in the mod list works there; the release jar does not bundle it.
+    runtimeOnly("me.shedaniel.cloth:cloth-config-neoforge:${cloth_config_version}") { transitive = false }
+}
+
+shadowJar {
+    configurations = [project.configurations.bundle]
+    archiveClassifier = ''
+    rootProject.bundledRelocations.each { from, to -> relocate from, to }
+    rootProject.bundledExclusions.each { exclude it }
+    exclude 'META-INF/maven/**', 'META-INF/services/javax.script.*', 'META-INF/*.SF', 'META-INF/*.DSA',
+            'META-INF/*.RSA', 'module-info.class', 'META-INF/versions/*/module-info.class'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+jar { archiveClassifier = 'slim' }
+assemble.dependsOn shadowJar

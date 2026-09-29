@@ -1,0 +1,46 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.tacz.guns.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "accessor.EntityAccessor",
+    "accessor.LivingEntityAccessor",
+    "common.LivingEntityMixin",
+    "common.ServerGamePacketListenerImplMixin",
+    "common.ServerPlayerMixin",
+    "common.ServerPlayNetHandlerMixin"
+  ],
+  "client": [
+    "accessor.GuiGraphicsExtractorAccessor",
+    "accessor.ItemModelsAccessor",
+    "accessor.MinecraftInvoker",
+    "accessor.MultiPlayerGameModeInvoker",
+    "accessor.SelectItemModelPropertiesAccessor",
+    "client.AbstractButtonMixin",
+    "client.CameraMixin",
+    "client.FeatureRenderDispatcherMixin",
+    "client.FirstPersonHandsAndItemsMixin",
+    "client.FirstPersonHandsAndItemsRendererMixin",
+    "client.GameRendererMixin",
+    "client.ItemInHandLayerMixin",
+    "client.LanguageMixin",
+    "client.LevelExtractorScopePassMixin",
+    "client.LevelRendererAccessor",
+    "client.LevelRendererWorldPassMixin",
+    "client.LocalPlayerMixin",
+    "client.MouseHandlerMixin",
+    "client.PlayerModelMixin",
+    "client.PreparedFrameAccessor",
+    "client.PreparedFrameSolidMixin",
+    "client.SimpleFeatureRenderPhaseMixin",
+    "client.SkyRendererMixin",
+    "client.SoundManagerPreparationsMixin",
+    "client.StairBlockAccessor",
+    "client.TranslucentFeatureRenderPhaseMixin"
+  ],
+  "_comment": "26.3: FirstPersonHandsAndItemsRendererMixin owns the submitHandsWithItems call site for TACZ viewmodels, so generic first-person hand transforms yield without affecting ordinary items. FirstPersonHandsAndItemsMixin carries the KeepingItemRenderer state, which 26.3 moved off the renderer onto client.player.FirstPersonHandsAndItems. PlayerModelMixin applies TACZ/PAL third-person poses from AvatarRenderState.",
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -1,0 +1,1028 @@
+﻿=== 26.3 vanilla OIT sources (extracted) ===
+repo: C:\Users\FiVE\Downloads\TACZ-updated-main
+
+################ STEP 1: genSources ################
+  trying: .\gradlew :fabric:genSources
+  -> failed / not applicable: :fabric:genSources
+  trying: .\gradlew :common:genSources
+  OK: :common:genSources succeeded
+
+################ STEP 2: find a jar containing vanilla .java sources ################
+  FOUND: C:\Users\FiVE\Downloads\TACZ-updated-main\.gradle\loom-cache\minecraftMaven\net\minecraft\minecraft-merged-f72d5a082a\26.3\minecraft-merged-f72d5a082a-26.3-sources.jar
+  extracted GameRenderer.java
+  extracted LevelRenderer.java
+  extracted RenderPipelines.java
+  extracted LevelTargetBundle.java
+  extracted OitPipelineSet.java
+  extracted OitRenderPassProvider.java
+  extracted OitStage.java
+
+######################################################################
+## A. GameRenderer -- renderItemInHand / hand pass                  ##
+######################################################################
+    376: 	}
+    377: 
+    378: 	private void renderItemInHand(final CameraRenderState cameraState, final PlayerRenderState playerState, final GpuTextureView depthTextureView) {
+    379: 		if (!cameraState.isPanoramicMode) {
+    380: 			if (playerState.hasPlayer
+    381: 				&& this.gameRenderState.optionsRenderState.cameraType.isFirstPerson()
+    382: 				&& !cameraState.entityRenderState.isSleeping
+    383: 				&& !this.gameRenderState.guiRenderState.isHudHidden
+    384: 				&& this.minecraft.gameMode.getPlayerMode() != GameType.SPECTATOR) {
+    385: 				PoseStack poseStack = new PoseStack();
+    386: 				poseStack.pushPose();
+    387: 				poseStack.mulPose(cameraState.viewRotationMatrix.invert(new Matrix4f()));
+    388: 				Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
+    389: 				modelViewStack.pushMatrix().mul(cameraState.viewRotationMatrix);
+    390: 				this.bobHurt(cameraState, poseStack);
+    391: 				if (this.gameRenderState.optionsRenderState.bobView) {
+    392: 					this.bobView(cameraState, poseStack);
+    393: 				}
+    394: 
+    395: 				if (playerState.firstPersonHandsAndItems != null) {
+    396: 					this.firstPersonHandsAndItemsRenderer
+    397: 						.submitHandsWithItems(
+    398: 							cameraState.cameraEntityPartialTicks, poseStack, this.handAndScreenSubmitNodeStorage, playerState, playerState.firstPersonHandsAndItems
+    399: 						);
+    400: 				}
+    401: 
+    402: 				try (
+    403: 					FeatureRenderDispatcher.PreparedFrame frame = this.featureRenderDispatcher.prepareFrame(this.handAndScreenSubmitNodeStorage);
+    404: 					RenderPass renderPass = RenderSystem.getDevice()
+    405: 						.createCommandEncoder()
+    406: 						.createRenderPass(() -> "Item in hand", this.mainRenderTarget.getColorTextureView(), Optional.empty(), depthTextureView, OptionalDouble.empty());
+    407: 				) {
+    408: 					RenderSystem.bindDefaultUniforms(renderPass);
+    409: 					FeatureRenderDispatcher.renderAllFeatures(renderPass, frame);
+    410: 				}
+    411: 
+    412: 				modelViewStack.popMatrix();
+    413: 				poseStack.popPose();
+    414: 			}
+    415: 		}
+    416: 	}
+    417: 
+    418: 	public static float nightVisionScale(final LivingEntity camera, final float a) {
+  ...
+    685: 		GpuTextureView depthTextureView = consistentDepthRequired ? this.hud3DTarget.getDepthTextureView() : this.mainRenderTarget.getDepthTextureView();
+    686: 		RenderSystem.getDevice().createCommandEncoder().clearDepthTexture(depthTexture, 0.0);
+    687: 		this.renderItemInHand(cameraState, playerState, depthTextureView);
+    688: 		profiler.popPush("screenEffects");
+    689: 		this.screenEffectRenderer
+    690: 			.submit(
+    691: 				this.gameRenderState.levelRenderState.worldPartialTicks,
+    692: 				this.handAndScreenSubmitNodeStorage,
+    693: 				playerState,
+    694: 				cameraState,
+    695: 				this.gameRenderState.guiRenderState.isHudHidden
+    696: 			);
+    697: 
+    698: 		try (FeatureRenderDispatcher.PreparedFrame frame = this.featureRenderDispatcher.prepareFrame(this.handAndScreenSubmitNodeStorage)) {
+    699: 			if (!frame.isEmpty()) {
+    700: 				try (RenderPass renderPass = RenderSystem.getDevice()
+    701: 						.createCommandEncoder()
+    702: 						.createRenderPass(() -> "Screen effects", this.mainRenderTarget.getColorTextureView(), Optional.empty(), depthTextureView, OptionalDouble.empty())) {
+    703: 					RenderSystem.bindDefaultUniforms(renderPass);
+    704: 					FeatureRenderDispatcher.renderAllFeatures(renderPass, frame);
+    705: 				}
+    706: 			}
+    707: 		}
+    708: 
+    709: 		profiler.pop();
+    710: 		RenderSystem.setShaderFog(this.fogRenderer.getBuffer(FogRenderer.FogMode.NONE));
+    711: 		if (this.gameRenderState.levelRenderState.render3dCrosshair && optionsState.cameraType.isFirstPerson() && !this.gameRenderState.guiRenderState.isHudHidden) {
+    712: 			this.debugCrosshairRenderer
+    713: 				.render(cameraState, this.gameRenderState.windowRenderState.guiScale, this.mainRenderTarget.getColorTextureView(), depthTextureView);
+    714: 		}
+    715: 
+    716: 		if (consistentDepthRequired) {
+    717: 			this.integrate3DHudDepth();
+    718: 		}
+    719: 	}
+    720: 
+    721: 	private void integrate3DHudDepth() {
+    722: 		RenderPassDescriptor integrateDepthDescriptor = RenderPassDescriptor.builder(() -> "Integrate 3d hud depth")
+    723: 			.withDepthAttachment(this.mainRenderTarget.getDepthTextureView())
+    724: 			.build();
+    725: 		GpuSampler nearestSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
+    726: 
+    727: 		try (RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(integrateDepthDescriptor)) {
+  ...
+
+--- A2. every place GameRenderer opens a render pass (attachments) ---
+     20: import com.mojang.renderpearl.api.commands.RenderPass;
+     21: import com.mojang.renderpearl.api.commands.RenderPassDescriptor;
+     22: import com.mojang.renderpearl.api.device.GpuDevice;
+     23: import com.mojang.renderpearl.api.pipeline.ShaderSource;
+     24: import com.mojang.renderpearl.api.pipeline.ShaderType;
+     25: import com.mojang.renderpearl.api.textures.FilterMode;
+     26: import com.mojang.renderpearl.api.textures.GpuSampler;
+     27: import com.mojang.renderpearl.api.textures.GpuTexture;
+  ...
+    405: 						.createCommandEncoder()
+    406: 						.createRenderPass(() -> "Item in hand", this.mainRenderTarget.getColorTextureView(), Optional.empty(), depthTextureView, OptionalDouble.empty());
+    407: 				) {
+    408: 					RenderSystem.bindDefaultUniforms(renderPass);
+    409: 					FeatureRenderDispatcher.renderAllFeatures(renderPass, frame);
+    410: 				}
+    411: 
+    412: 				modelViewStack.popMatrix();
+  ...
+    701: 						.createCommandEncoder()
+    702: 						.createRenderPass(() -> "Screen effects", this.mainRenderTarget.getColorTextureView(), Optional.empty(), depthTextureView, OptionalDouble.empty())) {
+    703: 					RenderSystem.bindDefaultUniforms(renderPass);
+    704: 					FeatureRenderDispatcher.renderAllFeatures(renderPass, frame);
+    705: 				}
+    706: 			}
+    707: 		}
+    708: 
+  ...
+    721: 	private void integrate3DHudDepth() {
+    722: 		RenderPassDescriptor integrateDepthDescriptor = RenderPassDescriptor.builder(() -> "Integrate 3d hud depth")
+    723: 			.withDepthAttachment(this.mainRenderTarget.getDepthTextureView())
+    724: 			.build();
+    725: 		GpuSampler nearestSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
+    726: 
+    727: 		try (RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(integrateDepthDescriptor)) {
+    728: 			renderPass.setUniform("InSampler", this.hud3DTarget.getDepthTextureView(), nearestSampler);
+  ...
+    729: 			renderPass.setPipeline(RenderSystem.getCompiledPipeline(RenderPipelines.INTEGRATE_DEPTH));
+    730: 			renderPass.draw(3, 1, 0, 0);
+    731: 		}
+    732: 	}
+    733: 
+  ...
+
+######################################################################
+## B. how vanilla decides OIT on/off                                ##
+######################################################################
+     70: import net.minecraft.client.renderer.gizmos.DrawableGizmoPrimitives;
+     71: import net.minecraft.client.renderer.oit.OitRenderPassProvider;
+     72: import net.minecraft.client.renderer.oit.OitStage;
+     73: import net.minecraft.client.renderer.rendertype.RenderType;
+     74: import net.minecraft.client.renderer.rendertype.RenderTypes;
+     75: import net.minecraft.client.renderer.state.OptionsRenderState;
+     76: import net.minecraft.client.renderer.state.level.BlockBreakingRenderState;
+     77: import net.minecraft.client.renderer.state.level.BlockOutlineRenderState;
+     78: import net.minecraft.client.renderer.state.level.CameraRenderState;
+  ...
+    109: @Environment(EnvType.CLIENT)
+    110: public class LevelRenderer implements AutoCloseable {
+    111: 	public static final int OIT_WAVELET_RANK = 2;
+    112: 	public static final int OIT_COEFFICIENT_COUNT = Math.powExact(2, 3);
+    113: 	public static final int OIT_TRANSMITTANCE_TARGET_COUNT = OIT_COEFFICIENT_COUNT / 4;
+    114: 	private static final Identifier ENTITY_OUTLINE_POST_CHAIN_ID = Identifier.withDefaultNamespace("entity_outline");
+    115: 	private static final int MINIMUM_TRANSPARENT_SORT_COUNT = 15;
+    116: 	private static final float CHUNK_VISIBILITY_THRESHOLD = 0.3F;
+    117: 	private static final Vector4fc DEPTH_BOUNDS_CLEAR_COLOR = new Vector4f(-Float.MAX_VALUE, 0.0F, 0.0F, 0.0F);
+  ...
+    118: 	private static final Vector4fc ZERO_CLEAR_COLOR = new Vector4f(0.0F);
+  ...
+    119: 	private final GameRenderer gameRenderer;
+  ...
+    230: 			);
+    231: 
+    232: 			for (int i = 0; i < OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
+    233: 				this.targets.transmittance.set(i, frame.createInternal("transmittance", transmittanceTargetDescriptor));
+    234: 			}
+    235: 
+    236: 			RenderTargetDescriptor accumulateTargetDescriptor = new RenderTargetDescriptor(
+    237: 				screenWidth, screenHeight, new RenderTargetDescriptor.TextureProperties(ZERO_CLEAR_COLOR, GpuFormat.RGBA16_FLOAT), null
+    238: 			);
+  ...
+    396: 			this.targets.depthBoundsCulled = pass.readsAndWrites(this.targets.depthBoundsCulled);
+    397: 
+    398: 			for (int i = 0; i < OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
+    399: 				this.targets.transmittance.set(i, pass.readsAndWrites(this.targets.transmittance.get(i)));
+    400: 			}
+    401: 
+    402: 			this.targets.accumulate = pass.readsAndWrites(this.targets.accumulate);
+    403: 			if (this.optionsRenderState.cloudStatus != CloudStatus.OFF && ARGB.alpha(this.levelRenderState.cloudColor) > 0) {
+    404: 				this.targets.oitCloudDepth = pass.readsAndWrites(this.targets.oitCloudDepth);
+  ...
+    556: 		GpuTextureView depthBoundsCulledTargetView = this.targets.depthBoundsCulled.get().getColorTextureView();
+    557: 		GpuTextureView accumulateTargetView = this.targets.accumulate.get().getColorTextureView();
+    558: 		GpuTextureView[] transmittanceTargetViews = new GpuTextureView[OIT_TRANSMITTANCE_TARGET_COUNT];
+    559: 
+    560: 		for (int i = 0; i < OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
+    561: 			transmittanceTargetViews[i] = this.targets.transmittance.get(i).get().getColorTextureView();
+    562: 		}
+    563: 
+    564: 		OitRenderPassProvider.Parameters params = new OitRenderPassProvider.Parameters(
+  ...
+    565: 			depthBoundsTargetView, transmittanceTargetViews, accumulateTargetView, mainDepthTextureView
+    566: 		);
+  ...
+    583: 		GpuTextureView blockAtlas = this.textureManager.getTexture(TextureAtlas.LOCATION_BLOCKS).getTextureView();
+    584: 
+    585: 		for (OitStage stage : OitStage.values()) {
+    586: 			chunkSectionsToRender.renderOit(this.chunkLayerSampler, stage, terrainParams, blockAtlas, this.gameRenderer.lightmap());
+    587: 
+    588: 			try (RenderPass renderPass = OitRenderPassProvider.createRenderPass(stage, () -> "Features, World Border, Weather", params)) {
+    589: 				featureFrame.executeOit(stage, renderPass);
+    590: 				this.worldBorderRenderer.renderOit(this.levelRenderState.worldBorderRenderState, cameraState.pos, renderDistance, stage, renderPass);
+    591: 				this.weatherEffectRenderer.renderOit(stage, this.levelRenderState.weatherRenderState, renderPass);
+  ...
+    592: 			}
+    593: 
+    594: 			if (stage == OitStage.DEPTH_BOUNDS) {
+    595: 				this.executeDepthBoundsCull();
+    596: 				params.setDepthBoundsTargetView(depthBoundsCulledTargetView);
+    597: 				terrainParams.setDepthBoundsTargetView(depthBoundsCulledTargetView);
+    598: 			}
+    599: 
+    600: 			if (shouldRenderClouds) {
+  ...
+    602: 			}
+    603: 
+    604: 			if (stage == OitStage.DEPTH_BOUNDS && frameHasWaterMask) {
+    605: 				this.executeOitWaterMask(featureFrame, mainTarget);
+    606: 			}
+    607: 		}
+    608: 
+    609: 		GpuSampler nearestSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
+    610: 		RenderTarget renderTarget = this.gameRenderer.mainRenderTarget();
+  ...
+    616: 			renderPass.setUniform("Sampler0", accumulateTargetView, nearestSampler);
+    617: 
+    618: 			for (int i = 0; i < OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
+    619: 				renderPass.setUniform("Coeff" + i, this.targets.transmittance.get(i).get().getColorTextureView(), nearestSampler);
+    620: 			}
+    621: 
+    622: 			renderPass.setUniform("DepthBoundsSampler", depthBoundsTargetView, nearestSampler);
+    623: 			renderPass.setPipeline(RenderSystem.getCompiledPipeline(RenderPipelines.OIT_COMPOSITE));
+    624: 			renderPass.draw(3, 1, 0, 0);
+  ...
+    625: 		}
+    626: 	}
+    627: 
+    628: 	private void executeDepthBoundsCull() {
+    629: 		GpuSampler nearestSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
+  ...
+    645: 			renderPass.draw(3, 1, 0, 0);
+    646: 			renderPass.setUniform("DepthBoundsSampler", depthBoundsTarget.getColorTextureView(), nearestSampler);
+    647: 			renderPass.setPipeline(RenderSystem.getCompiledPipeline(RenderPipelines.OIT_DEPTH_BOUNDS_CULL));
+    648: 			renderPass.draw(3, 1, 0, 0);
+    649: 		}
+    650: 	}
+    651: 
+    652: 	private void executeOitWaterMask(final FeatureRenderDispatcher.PreparedFrame featureFrame, final RenderTarget mainTarget) {
+    653: 		GpuSampler nearestSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
+  ...
+
+--- B2. GameRenderer: any OIT / graphics-mode branch ---
+  (no match for 'OIT|Oit|oit|Fabulous|fabulous|GraphicsStatus|graphicsMode')
+
+######################################################################
+## C. RenderPipelines -- OIT_ITEM / OIT_ENTITY definitions           ##
+######################################################################
+    402: 			.build()
+    403: 	);
+    404: 	public static final OitPipelineSet OIT_TERRAIN = register(
+    405: 		OitPipelineSet.builder(
+    406: 				"terrain",
+    407: 				RenderPipeline.builder(GENERIC_BLOCKS_SNIPPET)
+    408: 					.withVertexShader("core/terrain")
+    409: 					.withFragmentShader("core/terrain")
+    410: 					.withBindGroupLayout(BindGroupLayouts.CHUNK_SECTION)
+    411: 					.withBindGroupLayout(BindGroupLayouts.TERRAIN_INFO)
+    412: 					.withShaderDefine("ALPHA_CUTOUT", 0.1F)
+    413: 			)
+    414: 			.withAccumulateModifier(accumulate -> accumulate.withBindGroupLayout(BindGroupLayouts.SAMPLER2))
+    415: 			.build()
+    416: 	);
+    417: 	public static final OitPipelineSet OIT_TERRAIN_MULTIDRAW = register(
+    418: 		OitPipelineSet.builder(
+    419: 				"terrain_multidraw",
+    420: 				RenderPipeline.builder(GENERIC_BLOCKS_SNIPPET)
+    421: 					.withVertexShader("core/terrain")
+    422: 					.withFragmentShader("core/terrain")
+    423: 					.withBindGroupLayout(BindGroupLayouts.TERRAIN_INFO)
+    424: 					.withVertexBinding(1, DefaultVertexFormat.CHUNK_DATA_INSTANCED)
+    425: 					.withShaderDefine("ALPHA_CUTOUT", 0.1F)
+    426: 					.withShaderDefine("MULTIDRAW_TERRAIN")
+    427: 			)
+  ...
+    428: 			.withAccumulateModifier(accumulate -> accumulate.withBindGroupLayout(BindGroupLayouts.SAMPLER2))
+    429: 			.build()
+    430: 	);
+    431: 	public static final RenderPipeline TRANSLUCENT_BLOCK = register(
+    432: 		RenderPipeline.builder(BLOCK_SNIPPET)
+    433: 			.withLocation("pipeline/translucent_block")
+    434: 			.withShaderDefine("ALPHA_CUTOUT", 0.1F)
+    435: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    436: 			.withDepthStencilState(DepthStencilState.DEFAULT)
+    437: 			.build()
+    438: 	);
+    439: 	public static final OitPipelineSet OIT_TRANSLUCENT_BLOCK = register(
+    440: 		OitPipelineSet.builder(
+  ...
+    441: 				"translucent_block",
+    442: 				RenderPipeline.builder(GENERIC_BLOCKS_SNIPPET)
+    443: 					.withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
+    444: 					.withVertexShader("core/block")
+    445: 					.withFragmentShader("core/block")
+    446: 					.withShaderDefine("ALPHA_CUTOUT", 0.1F)
+    447: 			)
+    448: 			.withAccumulateModifier(accumulate -> accumulate.withBindGroupLayout(BindGroupLayouts.SAMPLER2))
+    449: 			.build()
+    450: 	);
+    451: 	public static final RenderPipeline ARMOR_CUTOUT_NO_CULL = register(
+    452: 		RenderPipeline.builder(ENTITY_SNIPPET)
+    453: 			.withLocation("pipeline/armor_cutout_no_cull")
+    454: 			.withShaderDefine("ALPHA_CUTOUT", 0.1F)
+    455: 			.withShaderDefine("NO_OVERLAY")
+    456: 			.withShaderDefine("PER_FACE_LIGHTING")
+    457: 			.withCull(false)
+    458: 			.withColorTargetState(ColorTargetState.DEFAULT)
+    459: 			.build()
+    460: 	);
+    461: 	public static final RenderPipeline ARMOR_DECAL_CUTOUT_NO_CULL = register(
+    462: 		RenderPipeline.builder(ENTITY_SNIPPET)
+  ...
+    543: 			.withCull(false)
+    544: 			.build()
+    545: 	);
+    546: 	public static final OitPipelineSet OIT_ENTITY = register(
+    547: 		OitPipelineSet.builder("entity", RenderPipeline.builder(OIT_ENTITY_SNIPPET).withCull(false))
+    548: 			.withAccumulateModifier(
+    549: 				accumulate -> accumulate.withShaderDefine("PER_FACE_LIGHTING")
+    550: 					.withBindGroupLayout(BindGroupLayouts.SAMPLER1)
+    551: 					.withBindGroupLayout(BindGroupLayouts.SAMPLER2)
+    552: 			)
+    553: 			.build()
+    554: 	);
+    555: 	public static final RenderPipeline ENTITY_TRANSLUCENT_EMISSIVE = register(
+    556: 		RenderPipeline.builder(ENTITY_EMISSIVE_SNIPPET)
+    557: 			.withLocation("pipeline/entity_translucent_emissive")
+    558: 			.withShaderDefine("ALPHA_CUTOUT", 0.1F)
+    559: 			.withShaderDefine("PER_FACE_LIGHTING")
+    560: 			.withBindGroupLayout(BindGroupLayouts.SAMPLER1)
+    561: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    562: 			.withCull(false)
+    563: 			.withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
+    564: 			.build()
+    565: 	);
+    566: 	public static final OitPipelineSet OIT_ENTITY_EMISSIVE = register(
+    567: 		OitPipelineSet.builder("entity_emissive", RenderPipeline.builder(OIT_ENTITY_SNIPPET).withCull(false))
+    568: 			.withAccumulateModifier(
+  ...
+    569: 				accumulate -> accumulate.withShaderDefine("PER_FACE_LIGHTING").withShaderDefine("EMISSIVE").withBindGroupLayout(BindGroupLayouts.SAMPLER1)
+  ...
+    570: 			)
+    571: 			.build()
+    572: 	);
+    573: 	public static final RenderPipeline ENTITY_TRANSLUCENT_CULL = register(
+    574: 		RenderPipeline.builder(ENTITY_SNIPPET)
+    575: 			.withLocation("pipeline/entity_translucent_cull")
+    576: 			.withShaderDefine("ALPHA_CUTOUT", 0.1F)
+    577: 			.withBindGroupLayout(BindGroupLayouts.SAMPLER1)
+    578: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    579: 			.build()
+    580: 	);
+    581: 	public static final OitPipelineSet OIT_ENTITY_CULL = register(
+    582: 		OitPipelineSet.builder("entity_cull", RenderPipeline.builder(OIT_ENTITY_SNIPPET))
+    583: 			.withAccumulateModifier(accumulate -> accumulate.withBindGroupLayout(BindGroupLayouts.SAMPLER1).withBindGroupLayout(BindGroupLayouts.SAMPLER2))
+    584: 			.build()
+    585: 	);
+    586: 	public static final RenderPipeline END_CRYSTAL_BEAM = register(
+    587: 		RenderPipeline.builder(ENTITY_SNIPPET)
+    588: 			.withLocation("pipeline/end_crystal_beam")
+    589: 			.withShaderDefine("ALPHA_CUTOUT", 0.1F)
+  ...
+    590: 			.withShaderDefine("NO_OVERLAY")
+    591: 			.withCull(false)
+    592: 			.withColorTargetState(ColorTargetState.DEFAULT)
+    593: 			.build()
+    594: 	);
+    595: 	public static final RenderPipeline BANNER_PATTERN = register(
+    596: 		RenderPipeline.builder(ENTITY_SNIPPET)
+    597: 			.withLocation("pipeline/banner_pattern")
+    598: 			.withShaderDefine("NO_OVERLAY")
+    599: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    600: 			.withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
+    601: 			.build()
+    602: 	);
+    603: 	public static final RenderPipeline BREEZE_WIND = register(
+    604: 		RenderPipeline.builder(ENTITY_SNIPPET)
+  ...
+    612: 			.build()
+    613: 	);
+    614: 	public static final OitPipelineSet OIT_BREEZE_WIND = register(
+    615: 		OitPipelineSet.builder(
+    616: 				"breeze_wind",
+    617: 				RenderPipeline.builder(OIT_ENTITY_SNIPPET)
+    618: 					.withShaderDefine("APPLY_TEXTURE_MATRIX")
+    619: 					.withShaderDefine("NO_OVERLAY")
+    620: 					.withShaderDefine("NO_CARDINAL_LIGHTING")
+    621: 					.withCull(false)
+    622: 			)
+    623: 			.withAccumulateModifier(accumulate -> accumulate.withBindGroupLayout(BindGroupLayouts.SAMPLER2))
+    624: 			.build()
+    625: 	);
+    626: 	private static final RenderPipeline.Snippet ENERGY_SWIRL_SNIPPET = RenderPipeline.builder(MATRICES_FOG_SNIPPET)
+    627: 		.withVertexShader("core/entity")
+    628: 		.withFragmentShader("core/entity")
+    629: 		.withShaderDefine("ALPHA_CUTOUT", 0.1F)
+    630: 		.withShaderDefine("EMISSIVE")
+    631: 		.withShaderDefine("NO_OVERLAY")
+    632: 		.withShaderDefine("NO_CARDINAL_LIGHTING")
+    633: 		.withShaderDefine("APPLY_TEXTURE_MATRIX")
+    634: 		.withBindGroupLayout(BindGroupLayouts.SAMPLER0)
+    635: 		.withCull(false)
+    636: 		.withVertexBinding(0, DefaultVertexFormat.ENTITY)
+    637: 		.withPrimitiveTopology(PrimitiveTopology.QUADS)
+  ...
+    644: 			.build()
+    645: 	);
+    646: 	public static final OitPipelineSet OIT_ENERGY_SWIRL = register(
+    647: 		OitPipelineSet.builder("energy_swirl", RenderPipeline.builder(ENERGY_SWIRL_SNIPPET).withShaderDefine("OIT_ADDITIVE")).build()
+    648: 	);
+    649: 	public static final RenderPipeline EYES = register(
+    650: 		RenderPipeline.builder(ENTITY_NO_LIGHTMAP_SNIPPET, EYES_SNIPPET)
+    651: 			.withLocation("pipeline/eyes")
+    652: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    653: 			.withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
+    654: 			.build()
+    655: 	);
+    656: 	public static final OitPipelineSet OIT_EYES = register(OitPipelineSet.builder("eyes", RenderPipeline.builder(OIT_ENTITY_SNIPPET, EYES_SNIPPET)).build());
+    657: 	private static final RenderPipeline.Snippet ENTITY_SHADOW_SNIPPET = RenderPipeline.builder(MATRICES_FOG_SNIPPET)
+    658: 		.withVertexShader("core/rendertype_entity_shadow")
+    659: 		.withFragmentShader("core/rendertype_entity_shadow")
+    660: 		.withBindGroupLayout(BindGroupLayouts.SAMPLER0)
+    661: 		.withVertexBinding(0, DefaultVertexFormat.ENTITY)
+    662: 		.withPrimitiveTopology(PrimitiveTopology.QUADS)
+    663: 		.withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
+    664: 		.buildSnippet();
+    665: 	public static final RenderPipeline ENTITY_SHADOW = register(
+    666: 		RenderPipeline.builder(ENTITY_SHADOW_SNIPPET)
+    667: 			.withLocation("pipeline/entity_shadow")
+    668: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    669: 			.build()
+  ...
+    670: 	);
+    671: 	public static final OitPipelineSet OIT_ENTITY_SHADOW = register(OitPipelineSet.builder("entity_shadow", RenderPipeline.builder(ENTITY_SHADOW_SNIPPET)).build());
+    672: 	public static final RenderPipeline.Snippet GLINT_SNIPPET = RenderPipeline.builder()
+    673: 		.withShaderDefine("GLINT")
+    674: 		.withBindGroupLayout(BindGroupLayouts.GLINT_SAMPLER)
+    675: 		.buildSnippet();
+    676: 	public static final RenderPipeline.Snippet GLINT_SPECIAL_SNIPPET = RenderPipeline.builder(GLINT_SNIPPET).withShaderDefine("GLINT_SPECIAL").buildSnippet();
+    677: 	public static final RenderPipeline ARMOR_CUTOUT_NO_CULL_GLINT = register(
+    678: 		RenderPipeline.builder(ENTITY_SNIPPET, GLINT_SNIPPET)
+  ...
+    679: 			.withLocation("pipeline/armor_cutout_no_cull_glint")
+    680: 			.withShaderDefine("ALPHA_CUTOUT", 0.1F)
+    681: 			.withShaderDefine("NO_OVERLAY")
+    682: 			.withShaderDefine("PER_FACE_LIGHTING")
+    683: 			.withCull(false)
+    684: 			.withColorTargetState(ColorTargetState.DEFAULT)
+    685: 			.build()
+    686: 	);
+    687: 	public static final RenderPipeline ENTITY_SOLID_GLINT = register(
+    688: 		RenderPipeline.builder(ENTITY_SNIPPET, GLINT_SNIPPET)
+    689: 			.withLocation("pipeline/entity_solid_glint")
+    690: 			.withBindGroupLayout(BindGroupLayouts.SAMPLER1)
+    691: 			.withColorTargetState(ColorTargetState.DEFAULT)
+    692: 			.build()
+    693: 	);
+  ...
+    720: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    721: 			.build()
+    722: 	);
+    723: 	public static final OitPipelineSet OIT_ITEM = register(
+    724: 		OitPipelineSet.builder("item", RenderPipeline.builder(OIT_ITEM_SNIPPET))
+    725: 			.withAccumulateModifier(accumulate -> accumulate.withBindGroupLayout(BindGroupLayouts.SAMPLER1).withBindGroupLayout(BindGroupLayouts.SAMPLER2))
+    726: 			.build()
+    727: 	);
+    728: 	public static final RenderPipeline ITEM_TRANSLUCENT_GLINT = register(
+    729: 		RenderPipeline.builder(ITEM_SNIPPET, GLINT_SNIPPET)
+    730: 			.withLocation("pipeline/item_translucent_glint")
+    731: 			.withShaderDefine("ALPHA_CUTOUT", 0.1F)
+    732: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    733: 			.build()
+    734: 	);
+    735: 	public static final RenderPipeline ITEM_TRANSLUCENT_GLINT_SPECIAL = register(
+    736: 		RenderPipeline.builder(ITEM_SNIPPET, GLINT_SPECIAL_SNIPPET)
+    737: 			.withLocation("pipeline/item_translucent_glint")
+    738: 			.withShaderDefine("ALPHA_CUTOUT", 0.1F)
+    739: 			.withVertexBinding(0, DefaultVertexFormat.ENTITY_GLINT_SPECIAL)
+    740: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    741: 			.build()
+    742: 	);
+    743: 	public static final OitPipelineSet OIT_ITEM_GLINT = register(
+    744: 		OitPipelineSet.builder("item_glint", RenderPipeline.builder(OIT_ITEM_SNIPPET))
+    745: 			.withAccumulateModifier(
+  ...
+    746: 				accumulate -> accumulate.withSnippet(GLINT_SNIPPET)
+  ...
+    747: 					.withBindGroupLayout(BindGroupLayouts.GLOBALS)
+    748: 					.withBindGroupLayout(BindGroupLayouts.SAMPLER1)
+    749: 					.withBindGroupLayout(BindGroupLayouts.SAMPLER2)
+    750: 			)
+    751: 			.build()
+    752: 	);
+    753: 	public static final OitPipelineSet OIT_ITEM_GLINT_SPECIAL = register(
+    754: 		OitPipelineSet.builder("item_glint_special", RenderPipeline.builder(OIT_ITEM_SNIPPET).withVertexBinding(0, DefaultVertexFormat.ENTITY_GLINT_SPECIAL))
+    755: 			.withAccumulateModifier(
+    756: 				accumulate -> accumulate.withSnippet(GLINT_SPECIAL_SNIPPET)
+    757: 					.withBindGroupLayout(BindGroupLayouts.GLOBALS)
+    758: 					.withBindGroupLayout(BindGroupLayouts.SAMPLER1)
+    759: 					.withBindGroupLayout(BindGroupLayouts.SAMPLER2)
+    760: 			)
+    761: 			.build()
+    762: 	);
+    763: 	public static final RenderPipeline BEACON_BEAM_OPAQUE = register(
+    764: 		RenderPipeline.builder(BEACON_BEAM_SNIPPET).withLocation("pipeline/beacon_beam_opaque").withColorTargetState(ColorTargetState.DEFAULT).build()
+    765: 	);
+    766: 	public static final RenderPipeline BEACON_BEAM_TRANSLUCENT = register(
+  ...
+    767: 		RenderPipeline.builder(BEACON_BEAM_SNIPPET)
+    768: 			.withLocation("pipeline/beacon_beam_translucent")
+    769: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    770: 			.withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
+    771: 			.build()
+    772: 	);
+    773: 	public static final OitPipelineSet OIT_BEACON_BEAM = register(OitPipelineSet.builder("beacon_beam", RenderPipeline.builder(BEACON_BEAM_SNIPPET)).build());
+    774: 	public static final RenderPipeline LEASH = register(
+    775: 		RenderPipeline.builder(MATRICES_FOG_SNIPPET)
+    776: 			.withLocation("pipeline/leash")
+  ...
+    777: 			.withVertexShader("core/rendertype_leash")
+    778: 			.withFragmentShader("core/rendertype_leash")
+    779: 			.withBindGroupLayout(BindGroupLayouts.SAMPLER2)
+    780: 			.withCull(false)
+    781: 			.withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR_LIGHTMAP)
+    782: 			.withPrimitiveTopology(PrimitiveTopology.TRIANGLE_STRIP)
+    783: 			.withColorTargetState(ColorTargetState.DEFAULT)
+    784: 			.withDepthStencilState(DepthStencilState.DEFAULT)
+    785: 			.build()
+    786: 	);
+    787: 	public static final RenderPipeline WATER_MASK = register(
+    788: 		RenderPipeline.builder(WATER_MASK_SNIPPET)
+    789: 			.withLocation("pipeline/water_mask")
+    790: 			.withColorTargetState(new ColorTargetState(Optional.of(BlendFunction.TRANSLUCENT), GpuFormat.RGBA8_UNORM, 0))
+    791: 			.build()
+    792: 	);
+    793: 	public static final RenderPipeline OIT_WATER_MASK = register(RenderPipeline.builder(WATER_MASK_SNIPPET).withLocation("pipeline/oit_water_mask").build());
+    794: 	public static final RenderPipeline GLINT = register(
+    795: 		RenderPipeline.builder(GLOBALS_SNIPPET)
+  ...
+    814: 			.withColorTargetState(new ColorTargetState(new BlendFunction(BlendFactor.DST_COLOR, BlendFactor.SRC_COLOR, BlendFactor.ONE, BlendFactor.ZERO)))
+    815: 			.build()
+    816: 	);
+    817: 	public static final OitPipelineSet OIT_CRUMBLING = register(OitPipelineSet.builder("crumbling", RenderPipeline.builder(CRUMBLING_SNIPPET)).build());
+    818: 	public static final RenderPipeline TEXT = register(
+    819: 		RenderPipeline.builder(WORLD_TEXT_SNIPPET).withLocation("pipeline/text").withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT)).build()
+    820: 	);
+    821: 	public static final OitPipelineSet OIT_TEXT = register(OitPipelineSet.builder("text", RenderPipeline.builder(WORLD_TEXT_SNIPPET)).build());
+    822: 	public static final RenderPipeline GUI_TEXT = register(RenderPipeline.builder(GUI_TEXT_SNIPPET).withLocation("pipeline/gui_text").build());
+    823: 	public static final RenderPipeline TEXT_GRAYSCALE = register(
+    824: 		RenderPipeline.builder(WORLD_TEXT_SNIPPET)
+    825: 			.withLocation("pipeline/text_grayscale")
+    826: 			.withShaderDefine("IS_GRAYSCALE")
+    827: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    828: 			.build()
+    829: 	);
+    830: 	public static final OitPipelineSet OIT_TEXT_GRAYSCALE = register(
+    831: 		OitPipelineSet.builder("text_grayscale", RenderPipeline.builder(WORLD_TEXT_SNIPPET).withShaderDefine("IS_GRAYSCALE")).build()
+    832: 	);
+    833: 	public static final RenderPipeline GUI_TEXT_GRAYSCALE = register(
+    834: 		RenderPipeline.builder(GUI_TEXT_SNIPPET).withLocation("pipeline/gui_text_grayscale").withShaderDefine("IS_GRAYSCALE").build()
+    835: 	);
+    836: 	public static final RenderPipeline TEXT_POLYGON_OFFSET = register(
+    837: 		RenderPipeline.builder(WORLD_TEXT_SNIPPET)
+    838: 			.withLocation("pipeline/text_polygon_offset")
+    839: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+  ...
+    840: 			.withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, true, 1.0F, 10.0F))
+    841: 			.build()
+    842: 	);
+    843: 	public static final OitPipelineSet OIT_TEXT_POLYGON_OFFSET = register(
+  ...
+    844: 		OitPipelineSet.builder("text_polygon_offset", RenderPipeline.builder(WORLD_TEXT_SNIPPET)).build()
+    845: 	);
+    846: 	public static final RenderPipeline TEXT_GRAYSCALE_POLYGON_OFFSET = register(
+    847: 		RenderPipeline.builder(WORLD_TEXT_SNIPPET)
+    848: 			.withLocation("pipeline/text_grayscale_polygon_offset")
+    849: 			.withShaderDefine("IS_GRAYSCALE")
+    850: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    851: 			.withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, true, 1.0F, 10.0F))
+    852: 			.build()
+    853: 	);
+  ...
+    854: 	public static final OitPipelineSet OIT_TEXT_GRAYSCALE_POLYGON_OFFSET = register(
+    855: 		OitPipelineSet.builder("text_grayscale_polygon_offset", RenderPipeline.builder(WORLD_TEXT_SNIPPET).withShaderDefine("IS_GRAYSCALE")).build()
+    856: 	);
+    857: 	public static final RenderPipeline TEXT_SEE_THROUGH = register(
+    858: 		RenderPipeline.builder(TEXT_SNIPPET)
+    859: 			.withLocation("pipeline/text_see_through")
+    860: 			.withShaderDefine("IS_SEE_THROUGH")
+    861: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    862: 			.withDepthStencilState(Optional.empty())
+    863: 			.build()
+    864: 	);
+    865: 	public static final RenderPipeline TEXT_GRAYSCALE_SEE_THROUGH = register(
+    866: 		RenderPipeline.builder(TEXT_SNIPPET)
+  ...
+    867: 			.withLocation("pipeline/text_grayscale_see_through")
+    868: 			.withShaderDefine("IS_GRAYSCALE")
+    869: 			.withShaderDefine("IS_SEE_THROUGH")
+    870: 			.withColorTargetState(ColorTargetState.DEFAULT)
+    871: 			.withDepthStencilState(Optional.empty())
+    872: 			.build()
+    873: 	);
+    874: 	public static final RenderPipeline LIGHTNING = register(
+    875: 		RenderPipeline.builder(LIGHTNING_SNIPPET).withLocation("pipeline/lightning").withColorTargetState(new ColorTargetState(BlendFunction.LIGHTNING)).build()
+    876: 	);
+    877: 	public static final OitPipelineSet OIT_LIGHTNING = register(
+  ...
+    878: 		OitPipelineSet.builder("lightning", RenderPipeline.builder(LIGHTNING_SNIPPET).withShaderDefine("OIT_ADDITIVE")).build()
+    879: 	);
+    880: 	public static final RenderPipeline DRAGON_RAYS = register(
+    881: 		RenderPipeline.builder(DRAGON_RAYS_SNIPPET).withLocation("pipeline/dragon_rays").withColorTargetState(new ColorTargetState(BlendFunction.LIGHTNING)).build()
+    882: 	);
+    883: 	public static final OitPipelineSet OIT_DRAGON_RAYS = register(
+    884: 		OitPipelineSet.builder("dragon_rays", RenderPipeline.builder(DRAGON_RAYS_SNIPPET).withShaderDefine("OIT_ADDITIVE")).build()
+    885: 	);
+    886: 	public static final RenderPipeline END_PORTAL = register(
+    887: 		RenderPipeline.builder(END_PORTAL_SNIPPET).withLocation("pipeline/end_portal").withShaderDefine("PORTAL_LAYERS", 15).build()
+    888: 	);
+    889: 	public static final RenderPipeline END_GATEWAY = register(
+    890: 		RenderPipeline.builder(END_PORTAL_SNIPPET).withLocation("pipeline/end_gateway").withShaderDefine("PORTAL_LAYERS", 16).build()
+    891: 	);
+    892: 	public static final RenderPipeline FLAT_CLOUDS = register(RenderPipeline.builder(CLOUDS_SNIPPET).withLocation("pipeline/flat_clouds").withCull(false).build());
+    893: 	public static final RenderPipeline CLOUDS = register(RenderPipeline.builder(CLOUDS_SNIPPET).withLocation("pipeline/clouds").build());
+    894: 	public static final OitPipelineSet OIT_CLOUDS = register(
+    895: 		OitPipelineSet.builder("clouds", RenderPipeline.builder(OIT_CLOUDS_SNIPPET))
+    896: 			.withDepthBoundsModifier(depthBounds -> depthBounds.withDepthStencilState(DepthStencilState.DEFAULT))
+    897: 			.build()
+    898: 	);
+    899: 	public static final OitPipelineSet OIT_FLAT_CLOUDS = register(
+    900: 		OitPipelineSet.builder("flat_clouds", RenderPipeline.builder(OIT_CLOUDS_SNIPPET).withCull(false)).build()
+  ...
+    901: 	);
+    902: 	public static final RenderPipeline LINES = register(
+    903: 		RenderPipeline.builder(LINES_SNIPPET).withLocation("pipeline/lines").withColorTargetState(ColorTargetState.DEFAULT).build()
+    904: 	);
+    905: 	public static final RenderPipeline LINES_TRANSLUCENT = register(
+    906: 		RenderPipeline.builder(LINES_SNIPPET)
+  ...
+    907: 			.withLocation("pipeline/lines_translucent")
+    908: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    909: 			.build()
+    910: 	);
+    911: 	public static final RenderPipeline LINES_TRANSLUCENT_NO_DEPTH_WRITE = register(
+    912: 		RenderPipeline.builder(LINES_SNIPPET)
+    913: 			.withLocation("pipeline/lines_translucent_no_depth_write")
+    914: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    915: 			.withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
+    916: 			.build()
+    917: 	);
+  ...
+    918: 	public static final OitPipelineSet OIT_LINES_TRANSLUCENT = register(
+    919: 		OitPipelineSet.builder("lines_translucent", RenderPipeline.builder(OIT_LINES_SNIPPET)).build()
+    920: 	);
+    921: 	public static final RenderPipeline LINES_DEPTH_BIAS = register(
+    922: 		RenderPipeline.builder(LINES_SNIPPET)
+  ...
+    923: 			.withLocation("pipeline/lines_depth_bias")
+    924: 			.withColorTargetState(ColorTargetState.DEFAULT)
+    925: 			.withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, true, 1.0F, 1.0F))
+    926: 			.build()
+    927: 	);
+    928: 	public static final RenderPipeline SECONDARY_BLOCK_OUTLINE = register(
+    929: 		RenderPipeline.builder(LINES_SNIPPET)
+    930: 			.withLocation("pipeline/secondary_block_outline")
+    931: 			.withColorTargetState(ColorTargetState.DEFAULT)
+    932: 			.withDepthStencilState(DepthStencilState.DEFAULT)
+    933: 			.build()
+    934: 	);
+    935: 	public static final RenderPipeline DEBUG_POINTS = register(
+    936: 		RenderPipeline.builder(DEBUG_POINTS_SNIPPET)
+    937: 			.withLocation("pipeline/debug_points")
+    938: 			.withBindGroupLayout(BindGroupLayouts.GLOBALS)
+    939: 			.withBindGroupLayout(BindGroupLayouts.PROJECTION)
+    940: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+    941: 			.withDepthStencilState(DepthStencilState.DEFAULT)
+  ...
+    942: 			.build()
+    943: 	);
+    944: 	public static final OitPipelineSet OIT_DEBUG_POINTS = register(OitPipelineSet.builder("debug_points", RenderPipeline.builder(DEBUG_POINTS_SNIPPET)).build());
+    945: 	public static final RenderPipeline DEBUG_FILLED_BOX = register(RenderPipeline.builder(DEBUG_FILLED_SNIPPET).withLocation("pipeline/debug_filled_box").build());
+    946: 	public static final OitPipelineSet OIT_DEBUG_FILLED_BOX = register(
+    947: 		OitPipelineSet.builder("debug_filled_box", RenderPipeline.builder(OIT_DEBUG_FILLED_SNIPPET)).build()
+    948: 	);
+    949: 	public static final RenderPipeline DEBUG_QUADS = register(
+    950: 		RenderPipeline.builder(DEBUG_FILLED_SNIPPET).withLocation("pipeline/debug_quads").withCull(false).build()
+    951: 	);
+    952: 	public static final OitPipelineSet OIT_DEBUG_QUADS = register(OitPipelineSet.builder("debug_quads", RenderPipeline.builder(OIT_DEBUG_FILLED_SNIPPET)).build());
+    953: 	public static final RenderPipeline DEBUG_TRIANGLE_FAN = register(
+    954: 		RenderPipeline.builder(DEBUG_FILLED_SNIPPET)
+    955: 			.withLocation("pipeline/debug_triangle_fan")
+    956: 			.withCull(false)
+    957: 			.withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)
+    958: 			.withPrimitiveTopology(PrimitiveTopology.TRIANGLE_FAN)
+    959: 			.build()
+    960: 	);
+    961: 	public static final OitPipelineSet OIT_DEBUG_TRIANGLE_FAN = register(
+    962: 		OitPipelineSet.builder(
+    963: 				"debug_triangle_fan",
+    964: 				RenderPipeline.builder(OIT_DEBUG_FILLED_SNIPPET)
+    965: 					.withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)
+    966: 					.withPrimitiveTopology(PrimitiveTopology.TRIANGLE_FAN)
+  ...
+    967: 			)
+    968: 			.build()
+    969: 	);
+  ...
+    970: 	public static final RenderPipeline WORLD_BORDER = register(
+    971: 		RenderPipeline.builder(GLOBALS_SNIPPET)
+    972: 			.withBindGroupLayout(BindGroupLayouts.PROJECTION)
+    973: 			.withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
+    974: 			.withLocation("pipeline/world_border")
+  ...
+    975: 			.withVertexShader("core/world_border")
+    976: 			.withFragmentShader("core/world_border")
+    977: 			.withBindGroupLayout(BindGroupLayouts.SAMPLER0)
+    978: 			.withColorTargetState(new ColorTargetState(BlendFunction.OVERLAY))
+    979: 			.withCull(false)
+    980: 			.withVertexBinding(0, DefaultVertexFormat.POSITION_TEX)
+    981: 			.withPrimitiveTopology(PrimitiveTopology.QUADS)
+    982: 			.withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, true, 3.0F, 3.0F))
+    983: 			.build()
+    984: 	);
+  ...
+    985: 	public static final OitPipelineSet OIT_WORLD_BORDER = register(
+    986: 		OitPipelineSet.builder(
+    987: 				"world_border",
+    988: 				RenderPipeline.builder(GLOBALS_SNIPPET)
+    989: 					.withVertexShader("core/world_border")
+    990: 					.withFragmentShader("core/world_border")
+    991: 					.withBindGroupLayout(BindGroupLayouts.SAMPLER0)
+    992: 					.withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
+    993: 					.withCull(false)
+    994: 					.withPrimitiveTopology(PrimitiveTopology.QUADS)
+    995: 					.withVertexBinding(0, DefaultVertexFormat.POSITION_TEX)
+    996: 					.withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false, 3.0F, 3.0F))
+    997: 					.withShaderDefine("OIT_ADDITIVE")
+    998: 			)
+    999: 			.build()
+   1000: 	);
+   1001: 	public static final RenderPipeline OPAQUE_PARTICLE = register(
+   1002: 		RenderPipeline.builder(PARTICLE_SNIPPET).withLocation("pipeline/opaque_particle").withColorTargetState(ColorTargetState.DEFAULT).build()
+   1003: 	);
+   1004: 	public static final RenderPipeline TRANSLUCENT_PARTICLE = register(
+   1005: 		RenderPipeline.builder(PARTICLE_SNIPPET)
+   1006: 			.withLocation("pipeline/translucent_particle")
+   1007: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+   1008: 			.build()
+  ...
+   1009: 	);
+   1010: 	public static final OitPipelineSet OIT_PARTICLE = register(OitPipelineSet.builder("particle", RenderPipeline.builder(OIT_PARTICLE_SNIPPET)).build());
+   1011: 	public static final RenderPipeline WEATHER = register(
+   1012: 		RenderPipeline.builder(WEATHER_SNIPPET)
+   1013: 			.withLocation("pipeline/weather")
+   1014: 			.withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
+   1015: 			.build()
+   1016: 	);
+   1017: 	public static final OitPipelineSet OIT_WEATHER = register(
+   1018: 		OitPipelineSet.builder("weather", RenderPipeline.builder(OIT_PARTICLE_SNIPPET).withCull(false)).build()
+   1019: 	);
+   1020: 	public static final RenderPipeline SKY = register(
+   1021: 		RenderPipeline.builder(MATRICES_FOG_SNIPPET)
+   1022: 			.withLocation("pipeline/sky")
+   1023: 			.withVertexShader("core/sky")
+   1024: 			.withFragmentShader("core/sky")
+   1025: 			.withVertexBinding(0, DefaultVertexFormat.POSITION)
+   1026: 			.withPrimitiveTopology(PrimitiveTopology.TRIANGLE_FAN)
+   1027: 			.withColorTargetState(ColorTargetState.DEFAULT)
+   1028: 			.build()
+   1029: 	);
+   1030: 	public static final RenderPipeline END_SKY = register(
+   1031: 		RenderPipeline.builder(GLOBALS_SNIPPET)
+   1032: 			.withBindGroupLayout(BindGroupLayouts.PROJECTION)
+  ...
+   1033: 			.withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
+   1034: 			.withLocation("pipeline/end_sky")
+   1035: 			.withVertexShader("core/position_tex_color")
+   1036: 			.withFragmentShader("core/position_tex_color")
+   1037: 			.withBindGroupLayout(BindGroupLayouts.SAMPLER0)
+   1038: 			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+   1039: 			.withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+   1040: 			.withPrimitiveTopology(PrimitiveTopology.QUADS)
+  ...
+
+######################################################################
+## D. LevelTargetBundle -- the REAL transmittance GpuFormat          ##
+######################################################################
+     22: 	public ResourceHandle<RenderTarget> depthBoundsCulled = ResourceHandle.invalid();
+     23: 	public final List<ResourceHandle<RenderTarget>> transmittance = new ArrayList<>();
+     24: 	public ResourceHandle<RenderTarget> accumulate = ResourceHandle.invalid();
+     25: 	public ResourceHandle<RenderTarget> oitCloudDepth = ResourceHandle.invalid();
+     26: 	public ResourceHandle<RenderTarget> oitTerrainWithWaterPatchDepth = ResourceHandle.invalid();
+     27: 	public @Nullable ResourceHandle<RenderTarget> entityOutline;
+     28: 
+     29: 	public LevelTargetBundle() {
+     30: 		for (int i = 0; i < LevelRenderer.OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
+     31: 			this.transmittance.add(ResourceHandle.invalid());
+  ...
+     32: 		}
+     33: 	}
+     34: 
+     35: 	@Override
+     36: 	public void replace(final Identifier id, final ResourceHandle<RenderTarget> handle) {
+     37: 		if (id.equals(MAIN_TARGET_ID)) {
+     38: 			this.main = handle;
+  ...
+     39: 		} else {
+  ...
+
+--- D2. LevelRenderer: where transmittance targets are created ---
+      8: import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
+      9: import com.mojang.blaze3d.resource.RenderTargetDescriptor;
+     10: import com.mojang.blaze3d.systems.RenderSystem;
+     11: import com.mojang.blaze3d.vertex.PoseStack;
+     12: import com.mojang.renderpearl.api.GpuFormat;
+     13: import com.mojang.renderpearl.api.buffers.GpuBuffer;
+     14: import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+     15: import com.mojang.renderpearl.api.commands.RenderPass;
+     16: import com.mojang.renderpearl.api.commands.RenderPassDescriptor;
+  ...
+     17: import com.mojang.renderpearl.api.device.DeviceFeatures;
+     18: import com.mojang.renderpearl.api.device.DeviceInfo;
+     19: import com.mojang.renderpearl.api.device.DeviceLimits;
+  ...
+    112: 	public static final int OIT_COEFFICIENT_COUNT = Math.powExact(2, 3);
+    113: 	public static final int OIT_TRANSMITTANCE_TARGET_COUNT = OIT_COEFFICIENT_COUNT / 4;
+    114: 	private static final Identifier ENTITY_OUTLINE_POST_CHAIN_ID = Identifier.withDefaultNamespace("entity_outline");
+    115: 	private static final int MINIMUM_TRANSPARENT_SORT_COUNT = 15;
+    116: 	private static final float CHUNK_VISIBILITY_THRESHOLD = 0.3F;
+    117: 	private static final Vector4fc DEPTH_BOUNDS_CLEAR_COLOR = new Vector4f(-Float.MAX_VALUE, 0.0F, 0.0F, 0.0F);
+    118: 	private static final Vector4fc ZERO_CLEAR_COLOR = new Vector4f(0.0F);
+    119: 	private final GameRenderer gameRenderer;
+    120: 	private final EntityRenderDispatcher entityRenderDispatcher;
+  ...
+    174: 		this.optionsRenderState = gameRenderer.gameRenderState().optionsRenderState;
+    175: 		this.entityOutlineTarget = new TextureTarget("Entity Outline", width, height, GpuFormat.RGBA8_UNORM, null);
+    176: 		DeviceInfo deviceInfo = RenderSystem.getDevice().getDeviceInfo();
+    177: 		DeviceFeatures deviceFeatures = deviceInfo.features();
+    178: 		DeviceLimits deviceLimits = deviceInfo.limits();
+    179: 		HintsAndWorkarounds hintsAndWorkarounds = deviceInfo.hintsAndWorkarounds();
+    180: 		this.multiDrawIndirectAvailable = deviceLimits.maxDrawIndirectDrawCount() > 0
+    181: 			&& deviceFeatures.nonZeroFirstInstance()
+    182: 			&& !hintsAndWorkarounds.multiDrawIndirectHasKnownIssues();
+  ...
+    212: 		int screenHeight = this.gameRenderer.mainRenderTarget().height;
+    213: 		RenderTargetDescriptor extraDepthTargetDescriptor = new RenderTargetDescriptor(
+    214: 			screenWidth, screenHeight, null, new RenderTargetDescriptor.TextureProperties(null, GpuFormat.D32_FLOAT)
+    215: 		);
+    216: 		RenderTargetDescriptor extraDepthTargetDescriptorCleared = new RenderTargetDescriptor(
+    217: 			screenWidth, screenHeight, null, RenderTargetDescriptor.TextureProperties.DEFAULT_DEPTH
+    218: 		);
+    219: 		if (this.gameRenderer.useImprovedTransparency()) {
+    220: 			RenderTargetDescriptor depthBoundsTargetDescriptor = new RenderTargetDescriptor(
+  ...
+    221: 				screenWidth, screenHeight, new RenderTargetDescriptor.TextureProperties(DEPTH_BOUNDS_CLEAR_COLOR, GpuFormat.RGBA32_FLOAT), null
+  ...
+    222: 			);
+    223: 			this.targets.depthBounds = frame.createInternal("depth_bounds", depthBoundsTargetDescriptor);
+  ...
+    224: 			RenderTargetDescriptor depthBoundsCulledTargetDescriptor = new RenderTargetDescriptor(
+  ...
+    225: 				screenWidth, screenHeight, new RenderTargetDescriptor.TextureProperties(null, GpuFormat.RGBA32_FLOAT), null
+    226: 			);
+    227: 			this.targets.depthBoundsCulled = frame.createInternal("depth_bounds_culled", depthBoundsCulledTargetDescriptor);
+  ...
+    228: 			RenderTargetDescriptor transmittanceTargetDescriptor = new RenderTargetDescriptor(
+  ...
+    229: 				screenWidth, screenHeight, new RenderTargetDescriptor.TextureProperties(ZERO_CLEAR_COLOR, GpuFormat.RGBA16_FLOAT), null
+    230: 			);
+    231: 
+  ...
+    232: 			for (int i = 0; i < OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
+  ...
+    233: 				this.targets.transmittance.set(i, frame.createInternal("transmittance", transmittanceTargetDescriptor));
+    234: 			}
+    235: 
+  ...
+    236: 			RenderTargetDescriptor accumulateTargetDescriptor = new RenderTargetDescriptor(
+  ...
+    237: 				screenWidth, screenHeight, new RenderTargetDescriptor.TextureProperties(ZERO_CLEAR_COLOR, GpuFormat.RGBA16_FLOAT), null
+    238: 			);
+    239: 			this.targets.accumulate = frame.createInternal("accumulate", accumulateTargetDescriptor);
+  ...
+    240: 			this.targets.oitCloudDepth = frame.createInternal("cloud_depth", extraDepthTargetDescriptor);
+  ...
+    241: 			this.targets.oitTerrainWithWaterPatchDepth = frame.createInternal("terrain_depth", extraDepthTargetDescriptor);
+    242: 		}
+    243: 
+  ...
+    244: 		if (this.frameHasAlwaysOnTopGizmos() && consistentDepthRequired) {
+  ...
+    397: 
+    398: 			for (int i = 0; i < OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
+    399: 				this.targets.transmittance.set(i, pass.readsAndWrites(this.targets.transmittance.get(i)));
+    400: 			}
+    401: 
+    402: 			this.targets.accumulate = pass.readsAndWrites(this.targets.accumulate);
+    403: 			if (this.optionsRenderState.cloudStatus != CloudStatus.OFF && ARGB.alpha(this.levelRenderState.cloudColor) > 0) {
+    404: 				this.targets.oitCloudDepth = pass.readsAndWrites(this.targets.oitCloudDepth);
+    405: 			}
+  ...
+    406: 
+  ...
+    557: 		GpuTextureView accumulateTargetView = this.targets.accumulate.get().getColorTextureView();
+    558: 		GpuTextureView[] transmittanceTargetViews = new GpuTextureView[OIT_TRANSMITTANCE_TARGET_COUNT];
+    559: 
+    560: 		for (int i = 0; i < OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
+    561: 			transmittanceTargetViews[i] = this.targets.transmittance.get(i).get().getColorTextureView();
+    562: 		}
+    563: 
+    564: 		OitRenderPassProvider.Parameters params = new OitRenderPassProvider.Parameters(
+    565: 			depthBoundsTargetView, transmittanceTargetViews, accumulateTargetView, mainDepthTextureView
+  ...
+    566: 		);
+    567: 		OitRenderPassProvider.Parameters cloudParams;
+  ...
+    568: 		if (shouldRenderClouds) {
+  ...
+    569: 			GpuTextureView cloudDepthTextureView = this.targets.oitCloudDepth.get().getDepthTextureView();
+    570: 			cloudParams = new OitRenderPassProvider.Parameters(depthBoundsCulledTargetView, transmittanceTargetViews, accumulateTargetView, cloudDepthTextureView);
+    571: 		} else {
+    572: 			cloudParams = null;
+  ...
+    573: 		}
+    574: 
+    575: 		OitRenderPassProvider.Parameters terrainParams;
+    576: 		if (frameHasWaterMask) {
+    577: 			GpuTextureView terrainDepthTextureView = this.targets.oitTerrainWithWaterPatchDepth.get().getDepthTextureView();
+  ...
+    578: 			terrainParams = new OitRenderPassProvider.Parameters(depthBoundsTargetView, transmittanceTargetViews, accumulateTargetView, terrainDepthTextureView);
+    579: 		} else {
+    580: 			terrainParams = params;
+    581: 		}
+    582: 
+    583: 		GpuTextureView blockAtlas = this.textureManager.getTexture(TextureAtlas.LOCATION_BLOCKS).getTextureView();
+    584: 
+    585: 		for (OitStage stage : OitStage.values()) {
+  ...
+    617: 
+    618: 			for (int i = 0; i < OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
+    619: 				renderPass.setUniform("Coeff" + i, this.targets.transmittance.get(i).get().getColorTextureView(), nearestSampler);
+    620: 			}
+    621: 
+    622: 			renderPass.setUniform("DepthBoundsSampler", depthBoundsTargetView, nearestSampler);
+    623: 			renderPass.setPipeline(RenderSystem.getCompiledPipeline(RenderPipelines.OIT_COMPOSITE));
+    624: 			renderPass.draw(3, 1, 0, 0);
+    625: 		}
+  ...
+    626: 	}
+  ...
+
+######################################################################
+## E. LevelRenderer -- OIT constants                                 ##
+######################################################################
+    110: public class LevelRenderer implements AutoCloseable {
+    111: 	public static final int OIT_WAVELET_RANK = 2;
+    112: 	public static final int OIT_COEFFICIENT_COUNT = Math.powExact(2, 3);
+    113: 	public static final int OIT_TRANSMITTANCE_TARGET_COUNT = OIT_COEFFICIENT_COUNT / 4;
+    114: 	private static final Identifier ENTITY_OUTLINE_POST_CHAIN_ID = Identifier.withDefaultNamespace("entity_outline");
+  ...
+    115: 	private static final int MINIMUM_TRANSPARENT_SORT_COUNT = 15;
+  ...
+    116: 	private static final float CHUNK_VISIBILITY_THRESHOLD = 0.3F;
+  ...
+    231: 
+    232: 			for (int i = 0; i < OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
+    233: 				this.targets.transmittance.set(i, frame.createInternal("transmittance", transmittanceTargetDescriptor));
+    234: 			}
+    235: 
+  ...
+    397: 
+    398: 			for (int i = 0; i < OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
+    399: 				this.targets.transmittance.set(i, pass.readsAndWrites(this.targets.transmittance.get(i)));
+    400: 			}
+    401: 
+  ...
+    557: 		GpuTextureView accumulateTargetView = this.targets.accumulate.get().getColorTextureView();
+    558: 		GpuTextureView[] transmittanceTargetViews = new GpuTextureView[OIT_TRANSMITTANCE_TARGET_COUNT];
+    559: 
+    560: 		for (int i = 0; i < OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
+    561: 			transmittanceTargetViews[i] = this.targets.transmittance.get(i).get().getColorTextureView();
+  ...
+    562: 		}
+    563: 
+  ...
+    617: 
+    618: 			for (int i = 0; i < OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
+    619: 				renderPass.setUniform("Coeff" + i, this.targets.transmittance.get(i).get().getColorTextureView(), nearestSampler);
+    620: 			}
+    621: 
+  ...
+
+======================================================================
+Full output: C:\Users\FiVE\Downloads\TACZ-updated-main\vanilla_oit_sources.txt
+
+Paste section A first - it decides everything.
+If A is huge, just paste the renderItemInHand method body.
+======================================================================

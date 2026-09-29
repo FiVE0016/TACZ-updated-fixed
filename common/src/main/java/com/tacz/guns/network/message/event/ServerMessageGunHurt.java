@@ -1,0 +1,86 @@
+package com.tacz.guns.network.message.event;
+
+import cn.sh1rocu.tacz.api.LogicalSide;
+import com.tacz.guns.GunMod;
+import com.tacz.guns.api.event.common.EntityHurtByGunEvent;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+
+import javax.annotation.Nullable;
+
+public class ServerMessageGunHurt implements CustomPacketPayload {
+    public static final Identifier PACKET_ID = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "s2c_gunhurt");
+    public static final CustomPacketPayload.Type<ServerMessageGunHurt> TYPE = new CustomPacketPayload.Type<>(PACKET_ID);
+    public static final StreamCodec<FriendlyByteBuf, ServerMessageGunHurt> CODEC = StreamCodec.ofMember(ServerMessageGunHurt::write, ServerMessageGunHurt::new);
+
+    private final int bulletId;
+    private final int hurtEntityId;
+    private final int attackerId;
+    private final Identifier gunId;
+    private final Identifier gunDisplayId;
+    private final float amount;
+    private final boolean isHeadShot;
+    private final float headshotMultiplier;
+
+    public ServerMessageGunHurt(FriendlyByteBuf buf) {
+        this(
+                buf.readInt(), buf.readInt(), buf.readInt(),
+                buf.readIdentifier(), buf.readIdentifier(),
+                buf.readFloat(), buf.readBoolean(), buf.readFloat()
+        );
+    }
+
+    public ServerMessageGunHurt(int bulletId, int hurtEntityId, int attackerId, Identifier gunId, Identifier gunDisplayId,
+                                float amount, boolean isHeadShot, float headshotMultiplier) {
+        this.bulletId = bulletId;
+        this.hurtEntityId = hurtEntityId;
+        this.attackerId = attackerId;
+        this.gunId = gunId;
+        this.gunDisplayId = gunDisplayId;
+        this.amount = amount;
+        this.isHeadShot = isHeadShot;
+        this.headshotMultiplier = headshotMultiplier;
+    }
+
+        public void write(FriendlyByteBuf buf) {
+        buf.writeInt(bulletId);
+        buf.writeInt(hurtEntityId);
+        buf.writeInt(attackerId);
+        buf.writeIdentifier(gunId);
+        buf.writeIdentifier(gunDisplayId);
+        buf.writeFloat(amount);
+        buf.writeBoolean(isHeadShot);
+        buf.writeFloat(headshotMultiplier);
+    }
+
+    @Override
+    public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
+
+    /**
+     * Client-side handling. Kept in its own class so a dedicated server never loads or verifies client code.
+     */
+    public static final class Client {
+        private Client() {
+        }
+
+        public static void handle(ServerMessageGunHurt message) {
+            ClientLevel level = Minecraft.getInstance().level;
+            if (level == null) {
+                return;
+            }
+            @Nullable Entity bullet = level.getEntity(message.bulletId);
+            @Nullable Entity hurtEntity = level.getEntity(message.hurtEntityId);
+            @Nullable LivingEntity attacker = level.getEntity(message.attackerId) instanceof LivingEntity livingEntity ? livingEntity : null;
+            EntityHurtByGunEvent.Post event = new EntityHurtByGunEvent.Post(bullet, hurtEntity, attacker, message.gunId, message.gunDisplayId, message.amount, null, message.isHeadShot, message.headshotMultiplier, LogicalSide.CLIENT);
+            EntityHurtByGunEvent.POST.invoker().post(event);
+        }
+    }
+}

@@ -1,0 +1,103 @@
+package com.tacz.guns.block;
+
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.ScheduledTickAccess;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LevelEvent;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BedPart;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
+
+/**
+ * 双方块的枪械工作台，2x1x1
+ */
+public class GunSmithTableBlockB extends AbstractGunSmithTableBlock {
+    public static final EnumProperty<BedPart> PART = BlockStateProperties.BED_PART;
+
+    public GunSmithTableBlockB(Properties props) {
+        super(props);
+        this.registerDefaultState(this.stateDefinition.any().setValue(FACING, Direction.NORTH).setValue(PART, BedPart.FOOT));
+    }
+
+    private static Direction getNeighbourDirection(BedPart bedPart, Direction direction) {
+        return bedPart == BedPart.FOOT ? direction : direction.getOpposite();
+    }
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        builder.add(FACING, PART);
+    }
+
+
+    @Override
+    public BlockState getStateForPlacement(BlockPlaceContext context) {
+        Direction direction = context.getHorizontalDirection().getClockWise();
+        BlockPos clickedPos = context.getClickedPos();
+        BlockPos relative = clickedPos.relative(direction);
+        Level level = context.getLevel();
+        if (level.getBlockState(relative).canBeReplaced(context) && level.getWorldBorder().isWithinBounds(relative)) {
+            return this.defaultBlockState().setValue(FACING, direction);
+        }
+        return null;
+    }
+
+    @Override
+    public BlockPos getCompanionPos(BlockPos rootPos, BlockState rootState) {
+        return rootPos.relative(rootState.getValue(FACING));
+    }
+
+    @Override
+    public BlockState getCompanionState(BlockState rootState) {
+        return rootState.setValue(PART, BedPart.HEAD);
+    }
+
+    @Override
+    public BlockState playerWillDestroy(Level level, BlockPos pos, BlockState blockState, Player player) {
+        // 用于抑制创造模式下摧毁head方块时foot的掉落
+        if (!level.isClientSide() && player.isCreative()) {
+            BedPart bedPart = blockState.getValue(PART);
+            if (bedPart == BedPart.FOOT) {
+                BlockPos blockpos = pos.relative(getNeighbourDirection(bedPart, blockState.getValue(FACING)));
+                BlockState blockstate = level.getBlockState(blockpos);
+                if (blockstate.is(this) && blockstate.getValue(PART) == BedPart.HEAD) {
+                    level.setBlock(blockpos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL | Block.UPDATE_SUPPRESS_DROPS);
+                    level.levelEvent(player, LevelEvent.PARTICLES_DESTROY_BLOCK, blockpos, Block.getId(blockstate));
+                }
+            }
+        }
+        return super.playerWillDestroy(level, pos, blockState, player);
+    }
+
+    @Override
+    protected BlockState updateShape(BlockState state, LevelReader level, ScheduledTickAccess tickAccess, BlockPos currentPos, Direction direction, BlockPos facingPos, BlockState facingState, RandomSource random) {
+        if (direction == getNeighbourDirection(state.getValue(PART), state.getValue(FACING))) {
+            return facingState.is(this) && facingState.getValue(PART) != state.getValue(PART) ? state : Blocks.AIR.defaultBlockState();
+        } else {
+            return super.updateShape(state, level, tickAccess, currentPos, direction, facingPos, facingState, random);
+        }
+    }
+
+    @Override
+    public boolean isRoot(BlockState blockState) {
+        return blockState.getValue(PART).equals(BedPart.FOOT);
+    }
+
+    @Override
+    public float parseRotation(Direction direction) {
+        return 90 - 90 * direction.get2DDataValue();
+    }
+
+    @Override
+    public BlockPos getRootPos(BlockPos pos, BlockState blockState) {
+        return blockState.getValue(PART).equals(BedPart.FOOT) ? pos : pos.relative(getNeighbourDirection(BedPart.HEAD, blockState.getValue(FACING)));
+    }
+}

@@ -1,0 +1,392 @@
+﻿=== TaCZ OIT probe round 5 ===
+extracted: LevelRenderer  (77753 bytes)
+extracted: RenderPipelines  (36651 bytes)
+extracted: OitPipelineSet  (3583 bytes)
+
+#################### A. LevelRenderer OIT constants ####################
+  public static final int OIT_WAVELET_RANK = 2;
+  public static final int OIT_COEFFICIENT_COUNT;
+  public static final int OIT_TRANSMITTANCE_TARGET_COUNT;
+  private void executeOit(net.minecraft.client.renderer.chunk.ChunkSectionsToRender, net.minecraft.client.renderer.feature.FeatureRenderDispatcher$PreparedFrame);
+  private void executeOitWaterMask(net.minecraft.client.renderer.feature.FeatureRenderDispatcher$PreparedFrame, com.mojang.blaze3d.pipeline.RenderTarget);
+  private static java.lang.String lambda$executeOitWaterMask$0();
+  private static java.lang.String lambda$executeOit$1();
+  private static java.lang.String lambda$executeOit$0();
+
+  -- raw <clinit> OIT region (in case javap omits the value) --
+  Compiled from "LevelRenderer.java"
+  public class net.minecraft.client.renderer.LevelRenderer implements java.lang.AutoCloseable {
+  public static final int OIT_WAVELET_RANK;
+  
+  public static final int OIT_COEFFICIENT_COUNT;
+  
+  public static final int OIT_TRANSMITTANCE_TARGET_COUNT;
+  
+  private static final net.minecraft.resources.Identifier ENTITY_OUTLINE_POST_CHAIN_ID;
+  ----------------------------------
+  Compiled from "LevelRenderer.java"
+  public class net.minecraft.client.renderer.LevelRenderer implements java.lang.AutoCloseable {
+  public static final int OIT_WAVELET_RANK;
+  
+  public static final int OIT_COEFFICIENT_COUNT;
+  
+  public static final int OIT_TRANSMITTANCE_TARGET_COUNT;
+  
+  private static final net.minecraft.resources.Identifier ENTITY_OUTLINE_POST_CHAIN_ID;
+  
+  private static final int MINIMUM_TRANSPARENT_SORT_COUNT;
+  ----------------------------------
+  Compiled from "LevelRenderer.java"
+  public class net.minecraft.client.renderer.LevelRenderer implements java.lang.AutoCloseable {
+  public static final int OIT_WAVELET_RANK;
+  
+  public static final int OIT_COEFFICIENT_COUNT;
+  
+  public static final int OIT_TRANSMITTANCE_TARGET_COUNT;
+  
+  private static final net.minecraft.resources.Identifier ENTITY_OUTLINE_POST_CHAIN_ID;
+  
+  private static final int MINIMUM_TRANSPARENT_SORT_COUNT;
+  
+  private static final float CHUNK_VISIBILITY_THRESHOLD;
+  ----------------------------------
+  355: aconst_null
+  356: invokespecial #335                // Method com/mojang/blaze3d/resource/RenderTargetDescriptor."<init>":(IILcom/mojang/blaze3d/resource/RenderTargetDescriptor$TextureProperties;Lcom/mojang/blaze3d/resource/RenderTargetDescriptor$TextureProperties;)V
+  359: astore        18
+  361: iconst_0
+  362: istore        19
+  364: iload         19
+  366: getstatic     #369                // Field OIT_TRANSMITTANCE_TARGET_COUNT:I
+  369: if_icmpge     403
+  372: aload_0
+  373: getfield      #73                 // Field targets:Lnet/minecraft/client/renderer/LevelTargetBundle;
+  376: getfield      #372                // Field net/minecraft/client/renderer/LevelTargetBundle.transmittance:Ljava/util/List;
+  379: iload         19
+  381: aload         11
+  ----------------------------------
+  75: getfield      #360                // Field net/minecraft/client/renderer/LevelTargetBundle.depthBoundsCulled:Lcom/mojang/blaze3d/resource/ResourceHandle;
+  78: invokeinterface #416,  2          // InterfaceMethod com/mojang/blaze3d/framegraph/FramePass.readsAndWrites:(Lcom/mojang/blaze3d/resource/ResourceHandle;)Lcom/mojang/blaze3d/resource/ResourceHandle;
+  83: putfield      #360                // Field net/minecraft/client/renderer/LevelTargetBundle.depthBoundsCulled:Lcom/mojang/blaze3d/resource/ResourceHandle;
+  86: iconst_0
+  87: istore        8
+  89: iload         8
+  91: getstatic     #369                // Field OIT_TRANSMITTANCE_TARGET_COUNT:I
+  94: if_icmpge     142
+  97: aload_0
+  98: getfield      #73                 // Field targets:Lnet/minecraft/client/renderer/LevelTargetBundle;
+  101: getfield      #372                // Field net/minecraft/client/renderer/LevelTargetBundle.transmittance:Ljava/util/List;
+  104: iload         8
+  106: aload         6
+  ----------------------------------
+  144: getfield      #73                 // Field targets:Lnet/minecraft/client/renderer/LevelTargetBundle;
+  147: getfield      #385                // Field net/minecraft/client/renderer/LevelTargetBundle.accumulate:Lcom/mojang/blaze3d/resource/ResourceHandle;
+  150: invokeinterface #810,  1          // InterfaceMethod com/mojang/blaze3d/resource/ResourceHandle.get:()Ljava/lang/Object;
+  155: checkcast     #317                // class com/mojang/blaze3d/pipeline/RenderTarget
+  158: invokevirtual #770                // Method com/mojang/blaze3d/pipeline/RenderTarget.getColorTextureView:()Lcom/mojang/renderpearl/api/textures/GpuTextureView;
+  161: astore        12
+  163: getstatic     #369                // Field OIT_TRANSMITTANCE_TARGET_COUNT:I
+  166: anewarray     #967                // class com/mojang/renderpearl/api/textures/GpuTextureView
+  169: astore        13
+  171: iconst_0
+  172: istore        14
+  174: iload         14
+  176: getstatic     #369                // Field OIT_TRANSMITTANCE_TARGET_COUNT:I
+  ----------------------------------
+  163: getstatic     #369                // Field OIT_TRANSMITTANCE_TARGET_COUNT:I
+  166: anewarray     #967                // class com/mojang/renderpearl/api/textures/GpuTextureView
+  169: astore        13
+  171: iconst_0
+  172: istore        14
+  174: iload         14
+  176: getstatic     #369                // Field OIT_TRANSMITTANCE_TARGET_COUNT:I
+  179: if_icmpge     221
+  182: aload         13
+  184: iload         14
+  186: aload_0
+  187: getfield      #73                 // Field targets:Lnet/minecraft/client/renderer/LevelTargetBundle;
+  190: getfield      #372                // Field net/minecraft/client/renderer/LevelTargetBundle.transmittance:Ljava/util/List;
+  ----------------------------------
+  644: aload         12
+  646: aload         18
+  648: invokeinterface #855,  4          // InterfaceMethod com/mojang/renderpearl/api/commands/RenderPass.setUniform:(Ljava/lang/String;Lcom/mojang/renderpearl/api/textures/GpuTextureView;Lcom/mojang/renderpearl/api/textures/GpuSampler;)V
+  653: iconst_0
+  654: istore        21
+  656: iload         21
+  658: getstatic     #369                // Field OIT_TRANSMITTANCE_TARGET_COUNT:I
+  661: if_icmpge     714
+  664: aload         20
+  666: iload         21
+  668: invokedynamic #1022,  0           // InvokeDynamic #8:makeConcatWithConstants:(I)Ljava/lang/String;
+  673: aload_0
+  674: getfield      #73                 // Field targets:Lnet/minecraft/client/renderer/LevelTargetBundle;
+  ----------------------------------
+  714: aload         20
+  716: ldc_w         #1026               // String DepthBoundsSampler
+  719: aload         10
+  721: aload         18
+  723: invokeinterface #855,  4          // InterfaceMethod com/mojang/renderpearl/api/commands/RenderPass.setUniform:(Ljava/lang/String;Lcom/mojang/renderpearl/api/textures/GpuTextureView;Lcom/mojang/renderpearl/api/textures/GpuSampler;)V
+  728: aload         20
+  730: getstatic     #1028               // Field net/minecraft/client/renderer/RenderPipelines.OIT_COMPOSITE:Lcom/mojang/renderpearl/api/pipeline/RenderPipeline;
+  733: invokestatic  #865                // Method com/mojang/blaze3d/systems/RenderSystem.getCompiledPipeline:(Lcom/mojang/renderpearl/api/pipeline/RenderPipeline;)Lcom/mojang/renderpearl/api/pipeline/CompiledRenderPipeline;
+  736: invokeinterface #869,  2          // InterfaceMethod com/mojang/renderpearl/api/commands/RenderPass.setPipeline:(Lcom/mojang/renderpearl/api/pipeline/CompiledRenderPipeline;)V
+  741: aload         20
+  743: iconst_3
+  744: iconst_1
+  745: iconst_0
+  ----------------------------------
+  128: ldc_w         #1026               // String DepthBoundsSampler
+  131: aload_2
+  132: invokevirtual #770                // Method com/mojang/blaze3d/pipeline/RenderTarget.getColorTextureView:()Lcom/mojang/renderpearl/api/textures/GpuTextureView;
+  135: aload_1
+  136: invokeinterface #855,  4          // InterfaceMethod com/mojang/renderpearl/api/commands/RenderPass.setUniform:(Ljava/lang/String;Lcom/mojang/renderpearl/api/textures/GpuTextureView;Lcom/mojang/renderpearl/api/textures/GpuSampler;)V
+  141: aload         4
+  143: getstatic     #1035               // Field net/minecraft/client/renderer/RenderPipelines.OIT_DEPTH_BOUNDS_CULL:Lcom/mojang/renderpearl/api/pipeline/RenderPipeline;
+  146: invokestatic  #865                // Method com/mojang/blaze3d/systems/RenderSystem.getCompiledPipeline:(Lcom/mojang/renderpearl/api/pipeline/RenderPipeline;)Lcom/mojang/renderpearl/api/pipeline/CompiledRenderPipeline;
+  149: invokeinterface #869,  2          // InterfaceMethod com/mojang/renderpearl/api/commands/RenderPass.setPipeline:(Lcom/mojang/renderpearl/api/pipeline/CompiledRenderPipeline;)V
+  154: aload         4
+  156: iconst_3
+  157: iconst_1
+  158: iconst_0
+  ----------------------------------
+  
+  static {};
+  Code:
+  0: iconst_2
+  1: iconst_3
+  2: invokestatic  #2068               // Method java/lang/Math.powExact:(II)I
+  5: putstatic     #2071               // Field OIT_COEFFICIENT_COUNT:I
+  8: getstatic     #2071               // Field OIT_COEFFICIENT_COUNT:I
+  11: iconst_4
+  12: idiv
+  13: putstatic     #369                // Field OIT_TRANSMITTANCE_TARGET_COUNT:I
+  16: ldc_w         #405                // String entity_outline
+  19: invokestatic  #2074               // Method net/minecraft/resources/Identifier.withDefaultNamespace:(Ljava/lang/String;)Lnet/minecraft/resources/Identifier;
+  ----------------------------------
+  static {};
+  Code:
+  0: iconst_2
+  1: iconst_3
+  2: invokestatic  #2068               // Method java/lang/Math.powExact:(II)I
+  5: putstatic     #2071               // Field OIT_COEFFICIENT_COUNT:I
+  8: getstatic     #2071               // Field OIT_COEFFICIENT_COUNT:I
+  11: iconst_4
+  12: idiv
+  13: putstatic     #369                // Field OIT_TRANSMITTANCE_TARGET_COUNT:I
+  16: ldc_w         #405                // String entity_outline
+  19: invokestatic  #2074               // Method net/minecraft/resources/Identifier.withDefaultNamespace:(Ljava/lang/String;)Lnet/minecraft/resources/Identifier;
+  22: putstatic     #457                // Field ENTITY_OUTLINE_POST_CHAIN_ID:Lnet/minecraft/resources/Identifier;
+  ----------------------------------
+  1: iconst_3
+  2: invokestatic  #2068               // Method java/lang/Math.powExact:(II)I
+  5: putstatic     #2071               // Field OIT_COEFFICIENT_COUNT:I
+  8: getstatic     #2071               // Field OIT_COEFFICIENT_COUNT:I
+  11: iconst_4
+  12: idiv
+  13: putstatic     #369                // Field OIT_TRANSMITTANCE_TARGET_COUNT:I
+  16: ldc_w         #405                // String entity_outline
+  19: invokestatic  #2074               // Method net/minecraft/resources/Identifier.withDefaultNamespace:(Ljava/lang/String;)Lnet/minecraft/resources/Identifier;
+  22: putstatic     #457                // Field ENTITY_OUTLINE_POST_CHAIN_ID:Lnet/minecraft/resources/Identifier;
+  25: new           #2050               // class org/joml/Vector4f
+  28: dup
+  29: ldc_w         #2082               // float -3.4028235E38f
+  ----------------------------------
+
+#################### B. per-pipeline colour-target counts (RenderPipelines <clinit>) ####################
+  PIPELINE FIELD                             TGTS  NOTE
+  --------------------------------------------------------------------------
+  ANIMATE_SPRITE_BLIT                           0  
+  ANIMATE_SPRITE_INTERPOLATE                    1  
+  ANIMATE_SPRITE_SNIPPET                        0  
+  ARMOR_CUTOUT_NO_CULL                          1  
+  ARMOR_CUTOUT_NO_CULL_GLINT                    1  
+  ARMOR_DECAL_CUTOUT_NO_CULL                    1  
+  BANNER_PATTERN                                1  
+  BEACON_BEAM_OPAQUE                            1  
+  BEACON_BEAM_SNIPPET                           0  
+  BEACON_BEAM_TRANSLUCENT                       0  
+  BLIT_DEPTH                                    1  
+  BLIT_DEPTH_BOUNDS                             1  
+  BLIT_DEPTH_DURING_DEPTH_BOUNDS                0  
+  BLOCK_SCREEN_EFFECT                           0  
+  BLOCK_SNIPPET                                 0  
+  BREEZE_WIND                                   0  
+  CELESTIAL                                     0  
+  CLOUDS                                        0  
+  CLOUDS_SNIPPET                                0  
+  CROSSHAIR                                     1  
+  CRUMBLING                                     0  
+  CRUMBLING_SNIPPET                             1  
+  CUTOUT_BLOCK                                  1  
+  CUTOUT_TERRAIN                                1  
+  CUTOUT_TERRAIN_MULTIDRAW                      1  
+  DEBUG_FILLED_BOX                              0  
+  DEBUG_FILLED_SNIPPET                          0  
+  DEBUG_POINTS                                  0  
+  DEBUG_POINTS_SNIPPET                          0  
+  DEBUG_QUADS                                   0  
+  DEBUG_TRIANGLE_FAN                            0  
+  DRAGON_RAYS                                   0  
+  DRAGON_RAYS_SNIPPET                           0  
+  END_CRYSTAL_BEAM                              1  
+  END_GATEWAY                                   0  
+  END_PORTAL                                    0  
+  END_PORTAL_SNIPPET                            1  
+  END_SKY                                       1  
+  ENERGY_SWIRL                                  0  
+  ENERGY_SWIRL_SNIPPET                          1  
+  ENTITY_CUTOUT                                 1  
+  ENTITY_CUTOUT_CULL                            1  
+  ENTITY_CUTOUT_DISSOLVE                        1  
+  ENTITY_CUTOUT_Z_OFFSET                        1  
+  ENTITY_EMISSIVE_SNIPPET                       0  
+  ENTITY_NO_LIGHTMAP_SNIPPET                    0  
+  ENTITY_OUTLINE_BLIT                           1  
+  ENTITY_SHADOW                                 0  
+  ENTITY_SHADOW_SNIPPET                         1  
+  ENTITY_SNIPPET                                0  
+  ENTITY_SOLID                                  1  
+  ENTITY_SOLID_GLINT                            1  
+  ENTITY_SOLID_Z_OFFSET_FORWARD                 1  
+  ENTITY_TRANSLUCENT                            0  
+  ENTITY_TRANSLUCENT_CULL                       0  
+  ENTITY_TRANSLUCENT_EMISSIVE                   0  
+  EYES                                          0  
+  EYES_SNIPPET                                  0  
+  FIRE_SCREEN_EFFECT                            1  
+  FLAT_CLOUDS                                   0  
+  GENERIC_BLOCKS_SNIPPET                        0  
+  GLINT                                         1  
+  GLINT_SNIPPET                                 0  
+  GLINT_SPECIAL_SNIPPET                         1  
+  GLOBALS_SNIPPET                               0  
+  GUI                                           1  
+  GUI_INVERT                                    1  
+  GUI_NAUSEA_OVERLAY                            1  
+  GUI_OPAQUE_TEXTURED_BACKGROUND                1  
+  GUI_SNIPPET                                   1  
+  GUI_TEXT                                      1  
+  GUI_TEXT_GRAYSCALE                            1  
+  GUI_TEXT_HIGHLIGHT                            0  
+  GUI_TEXT_SNIPPET                              1  
+  GUI_TEXTURED                                  1  
+  GUI_TEXTURED_PREMULTIPLIED_ALPHA              0  
+  GUI_TEXTURED_SNIPPET                          1  
+  INTEGRATE_DEPTH                               0  
+  ITEM_CUTOUT                                   1  
+  ITEM_CUTOUT_GLINT                             1  
+  ITEM_CUTOUT_GLINT_SPECIAL                     1  
+  ITEM_SNIPPET                                  0  
+  ITEM_TRANSLUCENT                              0  
+  ITEM_TRANSLUCENT_GLINT                        1  
+  ITEM_TRANSLUCENT_GLINT_SPECIAL                0  
+  LEASH                                         1  
+  LIGHTMAP                                      1  
+  LIGHTNING                                     0  
+  LIGHTNING_SNIPPET                             0  
+  LINES                                         1  
+  LINES_DEPTH_BIAS                              1  
+  LINES_SNIPPET                                 0  
+  LINES_TRANSLUCENT                             1  
+  LINES_TRANSLUCENT_NO_DEPTH_WRITE              0  
+  LIT_BLOCKS_SNIPPET                            0  
+  MATRICES_FOG_LIGHT_DIR_SNIPPET                0  
+  MATRICES_FOG_SNIPPET                          0  
+  MOJANG_LOGO                                   1  
+  MULTIDRAW_TERRAIN_SNIPPET                     0  
+  OIT_ACCUMULATE_SNIPPET                        0  
+  OIT_BEACON_BEAM                               1  
+  OIT_BREEZE_WIND                               0  
+  OIT_CLOUDS                                    0  
+  OIT_CLOUDS_SNIPPET                            0  
+  OIT_COMPOSITE                                 0  
+  OIT_CRUMBLING                                 1  
+  OIT_DEBUG_FILLED_BOX                          0  
+  OIT_DEBUG_FILLED_SNIPPET                      0  
+  OIT_DEBUG_POINTS                              0  
+  OIT_DEBUG_QUADS                               0  
+  OIT_DEBUG_TRIANGLE_FAN                        1  
+  OIT_DEPTH_BOUNDS_CULL                         1  
+  OIT_DEPTH_BOUNDS_SNIPPET                      1  RANGE lo=268: iconst_1 hi=268: iconst_1
+  OIT_DRAGON_RAYS                               0  
+  OIT_ENERGY_SWIRL                              1  
+  OIT_ENTITY                                    1  
+  OIT_ENTITY_CULL                               1  
+  OIT_ENTITY_EMISSIVE                           1  
+  OIT_ENTITY_SHADOW                             0  
+  OIT_ENTITY_SNIPPET                            0  
+  OIT_EYES                                      0  
+  OIT_FLAT_CLOUDS                               1  
+  OIT_ITEM                                      1  
+  OIT_ITEM_GLINT                                0  
+  OIT_ITEM_GLINT_SPECIAL                        1  
+  OIT_ITEM_SNIPPET                              0  
+  OIT_LIGHTNING                                 1  
+  OIT_LINES_SNIPPET                             1  
+  OIT_LINES_TRANSLUCENT                         1  
+  OIT_PARTICLE                                  0  
+  OIT_PARTICLE_SNIPPET                          1  
+  OIT_SNIPPET                                   1  
+  OIT_TERRAIN                                   0  
+  OIT_TERRAIN_MULTIDRAW                         1  
+  OIT_TEXT                                      0  
+  OIT_TEXT_GRAYSCALE                            0  
+  OIT_TEXT_GRAYSCALE_POLYGON_OFFSET             1  
+  OIT_TEXT_POLYGON_OFFSET                       1  
+  OIT_TRANSLUCENT_BLOCK                         1  
+  OIT_TRANSMITTANCE_SNIPPET                     1  
+  OIT_WATER_MASK                                1  
+  OIT_WEATHER                                   1  
+  OIT_WORLD_BORDER                              1  
+  OPAQUE_PARTICLE                               1  
+  OPTIONAL_PIPELINES_BY_LOCATION                0  
+  OUTLINE_CULL                                  0  
+  OUTLINE_NO_CULL                               1  
+  OUTLINE_SNIPPET                               0  
+  PANORAMA                                      0  
+  PARTICLE_SNIPPET                              0  
+  PIPELINES_BY_LOCATION                         0  
+  POST_PROCESSING_SNIPPET                       1  
+  SECONDARY_BLOCK_OUTLINE                       1  
+  SKY                                           1  
+  SOLID_BLOCK                                   1  
+  SOLID_TERRAIN                                 1  
+  SOLID_TERRAIN_MULTIDRAW                       1  
+  STARS                                         1  
+  SUNRISE_SUNSET                                1  
+  TERRAIN_SNIPPET                               0  
+  TEXT                                          0  
+  TEXT_GRAYSCALE                                0  
+  TEXT_GRAYSCALE_POLYGON_OFFSET                 0  
+  TEXT_GRAYSCALE_SEE_THROUGH                    1  
+  TEXT_POLYGON_OFFSET                           0  
+  TEXT_SEE_THROUGH                              1  
+  TEXT_SNIPPET                                  0  
+  TRACY_BLIT                                    1  
+  TRANSLUCENT_BLOCK                             0  
+  TRANSLUCENT_PARTICLE                          0  
+  TRANSLUCENT_TERRAIN                           1  
+  TRANSLUCENT_TERRAIN_MULTIDRAW                 0  
+  VIGNETTE                                      1  
+  WATER_MASK                                    0  
+  WATER_MASK_SNIPPET                            0  
+  WEATHER                                       0  
+  WEATHER_SNIPPET                               0  
+  WIREFRAME                                     1  
+  WIREFRAME_MULTIDRAW                           1  
+  WOLF_ARMOR_CRACKS                             1  
+  WORLD_BORDER                                  0  
+  WORLD_TEXT_SNIPPET                            1  
+
+#################### C. spot-check: how vanilla builds one OIT set ####################
+  public com.mojang.renderpearl.api.pipeline.RenderPipeline getPipeline(net.minecraft.client.renderer.oit.OitStage);
+  0: getstatic     #19                 // Field net/minecraft/client/renderer/oit/OitPipelineSet$1.$SwitchMap$net$minecraft$client$renderer$oit$OitStage:[I
+  4: invokevirtual #25                 // Method net/minecraft/client/renderer/oit/OitStage.ordinal:()I
+  5: invokevirtual #40                 // Method com/mojang/renderpearl/api/pipeline/RenderPipeline$Builder.buildSnippet:()Lcom/mojang/renderpearl/api/pipeline/RenderPipeline$Snippet;
+  9: invokespecial #46                 // Method net/minecraft/client/renderer/oit/OitPipelineSet$Builder."<init>":(Lcom/mojang/renderpearl/api/pipeline/RenderPipeline$Snippet;Ljava/lang/String;)V
+
+======================================================
+Log: C:\Users\FiVE\Downloads\TACZ-updated-main\oit_probe5.txt
+What we need: the two OIT_* ints from section A, and
+whether NON-OIT pipelines in section B show a target
+count > 1 (that is what TACZ must match).
+======================================================
