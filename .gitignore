@@ -24,3 +24,8 @@ bin/
 # OS
 .DS_Store
 Thumbs.db
+
+# TACZ 本地诊断产物(勿上传)
+*.bak*
+_archive_*/
+*.log
