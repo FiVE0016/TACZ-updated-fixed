@@ -158,12 +158,6 @@ public final class ScopeMaskRenderer {
      */
     private static final float NDC_SANITY_LIMIT = 2.0f;
 
-    /** 折算屏幕方向时的最小「相机前方深度」；只用来挡住除零与贴近平面的点，不筛几何。 */
-    private static final float HULL_MIN_DEPTH = 1.0e-4f;
-
-    /** 折算后方向坐标的绝对值上限；超出即判为近平面伪影（取代旧的 NDC_SANITY_LIMIT）。 */
-    private static final float HULL_DIR_LIMIT = 3.0f;
-
     /** 顶点暂存区。复用同一个，避免每帧分配。 */
     private static final ByteBufferBuilder SCRATCH = new ByteBufferBuilder(4096);
 
@@ -649,13 +643,25 @@ public final class ScopeMaskRenderer {
      */
     private static boolean writeHullFill(BufferBuilder builder, Matrix4f pose, java.util.List<BedrockCube> cubes) {
         java.util.List<float[]> pts = new java.util.ArrayList<>();
-        // 【不再读回投影 UBO】26.3 上 slice.map(true, false) 恒抛 "Buffer is not readable"，
-        // 凸包路径因此从未真正生效过。改成纯 CPU 侧几何：
-        // 顶点先进绘制空间（pose 已烘焙 ModelView），再折算成「屏幕方向」——
-        // 即透视除法之后除以深度。投影对 xy 只多乘两个正常数，
-        // 而凸包在正缩放下顶点一一对应，故选出的是同一批顶点。
-        // 【关键】写出的仍是该顶点【自己】的绘制空间坐标，
-        // 深度与形状都贴合真实目镜；dir 只用于排序与筛选。
+        // 【26.2 取证】RenderSystem 已没有 getProjectionMatrix()——投影矩阵只以
+        // GpuBufferSlice（UBO）形式躺在 GPU 侧（字段投影 PROJECTION_MATRIX_UBO_SIZE，
+        // 布局即一个 std140 mat4：列主序 16 个 float）。CPU 侧做凸包就必须把它
+        // 读回来：slice.map(read, write) 拿到 MappedView.data()，读 64 字节。
+        // 关键在同源：掩码 pass 稍后 bindDefaultUniforms 用的就是
+        // RenderSystem.getProjectionMatrixBuffer() 这同一个 slice，所以这里读到的
+        // 与着色器实际消费的是【同一份字节】，凸包与画面严丝合缝。
+        // 成本是每帧至多一次 64B 的读回；UBO 是本帧刚上传的 ring 段，不是重同步。
+        // 读失败（驱动/Iris 怪异状态）一次 warn，本帧该条目回退逐立方体描摹。
+        Matrix4f proj = new Matrix4f();
+        try (GpuBufferSlice.MappedView view = RenderSystem.getProjectionMatrixBuffer().map(true, false)) {
+            proj.set(view.data());
+        } catch (Exception e) {
+            if (!loggedProjReadFailure) {
+                loggedProjReadFailure = true;
+                GunMod.LOGGER.warn("[TACZ Scope] Hull-fill: could not read back the projection UBO; this entry falls back to legacy per-cube tracing.", e);
+            }
+            return false;
+        }
         Vector4f tmp = new Vector4f();
         for (BedrockCube cube : cubes) {
             for (var polygon : cube.getPolygons()) {
@@ -665,11 +671,31 @@ public final class ScopeMaskRenderer {
                 for (var vertex : polygon.vertices) {
                     tmp.set(vertex.pos.x() / 16.0F, vertex.pos.y() / 16.0F, vertex.pos.z() / 16.0F, 1.0F);
                     tmp.mul(pose);
-                    float[] dir = toScreenDirection(tmp);
-                    if (dir == null) {
+                    tmp.mul(proj);
+                    // 只收「相机前方」的点：w<=0 的顶点经过透视除法会被翻到
+                    // NDC 对面（x/w、y/w 符号反转）。瞄具在极端侧头/切视角瞬间可能
+                    // 有顶点落到相机平面后方，若照收，凸包会被这类镜像点拉到屏幕
+                    // 另一端，当帧大片画面被错判成“镜内”而整块消失。
+                    // 丢掉后凸包不足 3 点会回退逐立方体描摹（=旧行为），安全。
+                    if (tmp.w <= 1.0e-6f) {
                         continue;
                     }
-                    pts.add(dir);
+                    float ndcX = tmp.x() / tmp.w;
+                    float ndcY = tmp.y() / tmp.w;
+                    // 【近平面炸包保护】w>0 还不够。瞄具是第一人称视模，离相机只有几厘米，
+                    // 而近平面是 0.05 —— 大幅转身/开镜过渡时，目镜的个别顶点会擦过近平面，
+                    // w 落到 0.001 这种量级，透视除法后 NDC 直接飙到 ±1000。
+                    // 凸包只要吃进一个这样的点就会撑满整个屏幕，掩码于是「全屏为真」，
+                    // 镜内画面被贴得到处都是 —— 用户实测「瞄着假人时完美，转身 190° 后
+                    // 放大的假人跑到镜外还是放大的」正是这个。
+                    //
+                    // 合法的目镜投影不可能离视口这么远，所以超出该范围的点一律判为
+                    // 近平面伪影丢弃。丢到不足 3 点时下面会回退逐立方体描摹（=旧行为），安全。
+                    if (!Float.isFinite(ndcX) || !Float.isFinite(ndcY)
+                            || Math.abs(ndcX) > NDC_SANITY_LIMIT || Math.abs(ndcY) > NDC_SANITY_LIMIT) {
+                        continue;
+                    }
+                    pts.add(new float[]{ndcX, ndcY});
                 }
             }
         }
@@ -715,12 +741,11 @@ public final class ScopeMaskRenderer {
         if (hull.size() < 3) {
             return false;
         }
-        // 每个凸包顶点写回它自己的原始绘制空间坐标：投影后 xy 精确落回
-        // toScreenDirection 算出的方向，深度就是目镜本来的深度。
-        // 于是既不需要做逆投影，也不会因为被压到某个统一深度平面而走形。
+        // 凸包顶点（NDC）逆投影回绘制空间，按退化四边形扇写出
+        Matrix4f invProj = proj.invert(new Matrix4f());
         float[] p0 = hull.get(0);
         for (int i = 1; i + 1 < hull.size(); i++) {
-            emitHullQuad(builder, p0, hull.get(i), hull.get(i + 1));
+            emitNdcAsQuad(builder, invProj, p0, hull.get(i), hull.get(i + 1));
         }
         return true;
     }
@@ -769,57 +794,27 @@ public final class ScopeMaskRenderer {
         }
     }
 
-    /**
-     * 把一个「绘制空间」点折算成屏幕方向，并把原始坐标一并带出来。
-     *
-     * <p>绘制空间 = 顶点经 pose（已烘焙 ModelView）变换后的坐标：相机在原点、看向 -z。
-     * 投影矩阵对 xy 只做「除以深度、再乘两个正常数」，所以 {@code (x / -z, y / -z)}
-     * 与真正的 NDC 只差一个正缩放；而凸包在正缩放下顶点一一对应。
-     * 于是可以在完全不知道 fov、宽高比、投影矩阵的前提下选出同一批凸包顶点，
-     * 也就不必把投影矩阵从 GPU 读回 CPU（26.3 上那步恒失败）。
-     *
-     * @return {@code {dirX, dirY, x, y, z}}；点不可用（相机后方、数值爆炸）时返回 null
-     */
-    @Nullable
-    private static float[] toScreenDirection(Vector4f v) {
-        float w = v.w();
-        if (Math.abs(w) <= 1.0e-6f) {
-            return null;
-        }
-        float x = v.x() / w;
-        float y = v.y() / w;
-        float z = v.z() / w;
-        // 相机看向 -z：depth = -z 就是到相机的距离。
-        float depth = -z;
-        // 写成 !(depth > MIN) 而不是 depth <= MIN，顺带把 NaN 也挡掉。
-        if (!(depth > HULL_MIN_DEPTH)) {
-            return null;
-        }
-        float dirX = x / depth;
-        float dirY = y / depth;
-        if (!Float.isFinite(dirX) || !Float.isFinite(dirY)
-                || Math.abs(dirX) > HULL_DIR_LIMIT || Math.abs(dirY) > HULL_DIR_LIMIT) {
-            return null;
-        }
-        return new float[]{dirX, dirY, x, y, z};
-    }
-
     /** 单调链叉积：(b−a)×(c−a) 的 z 分量。 */
     private static float cross(float[] a, float[] b, float[] c) {
         return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
     }
 
-    /** 把三个凸包顶点写成一个退化四边形（第 4 顶点重复）。 */
-    private static void emitHullQuad(BufferBuilder builder, float[] a, float[] b, float[] c) {
-        emitHullVertex(builder, a);
-        emitHullVertex(builder, b);
-        emitHullVertex(builder, c);
-        emitHullVertex(builder, c);
+    /** 把三个 NDC 点写成一个退化四边形（第 4 顶点重复），顺带回绘制空间。 */
+    private static void emitNdcAsQuad(BufferBuilder builder, Matrix4f invProj,
+                                      float[] a, float[] b, float[] c) {
+        emitNdcVertex(builder, invProj, a);
+        emitNdcVertex(builder, invProj, b);
+        emitNdcVertex(builder, invProj, c);
+        emitNdcVertex(builder, invProj, c);
     }
 
-    /** 凸包顶点：取该顶点【原始】的绘制空间坐标（dir 只用于凸包排序）。 */
-    private static void emitHullVertex(BufferBuilder builder, float[] dir) {
-        builder.addVertex(dir[2], dir[3], dir[4]);
+    private static void emitNdcVertex(BufferBuilder builder, Matrix4f invProj, float[] ndc) {
+        Vector4f v = new Vector4f(ndc[0], ndc[1], 0.0f, 1.0f);
+        v.mul(invProj);
+        if (Math.abs(v.w) > 1.0e-6f) {
+            v.div(v.w);
+        }
+        builder.addVertex(v.x(), v.y(), v.z());
     }
 
     /**
