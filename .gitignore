@@ -29,3 +29,7 @@ Thumbs.db
 *.bak*
 _archive_*/
 *.log
+
+# Machine-local Maven mirror for NeoForge artefacts (~13 MB, see neoforge/build.gradle).
+# Deliberately NOT committed: it is a workaround for one network, not project content.
+local-maven/

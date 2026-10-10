@@ -57,14 +57,17 @@
 |---|---|
 | Fabric | Fabric Loader 0.19.5+ 与 Fabric API 0.160.7+26.3 |
 | Quilt | Quilt Loader 0.31.0-beta.4+ 与 Fabric API 0.160.7+26.3（QSL 没有 26.x 版本） |
-| NeoForge | **正好 26.3.0.4-beta** —— 见下方警告，不要装更新的 beta |
+| NeoForge | **26.3.0.51-beta 或更新的 26.3 beta** |
 | Forge | Forge 26.3-66.0.2（**本仓库默认不构建 Forge 包**，见下） |
 
-> ⚠️ **NeoForge 版本是"钉死"的，不是"最低要求"。**
-> 本版本是按 `26.3.0.4-beta` 编译的。更新的 NeoForge 26.3 beta（例如 `26.3.0.51-beta`）
-> 移除了 FML 的 `ModConfig.Type.COMMON/SERVER`，按旧版编译的 jar 装上去会
-> **`NoSuchFieldError` 崩溃、进不去游戏**。请严格使用上表所列版本。
-> 修法见 `HANDOFF.md` 任务 1。
+> ⚠️ **NeoForge 有最低版本要求，不要装更旧的。**
+> 本版本按 `26.3.0.51-beta` 编译。更早的 26.3 beta（`.4` ~ `.7`）用的是旧版 FML 配置 API，
+> 本 jar 装上去会 **`NoSuchFieldError` 崩溃、进不去游戏**。
+> 成品 jar 内已声明 `versionRange = "[26.3.0.51-beta,)"`，所以 NeoForge 会**主动拒绝**过旧的版本，
+> 而不是放行后崩溃——但请仍然按上表的版本安装。
+>
+> （变更记录：2026-10-10 从 `26.3.0.4-beta` 升到 `26.3.0.51-beta`。前者会让玩家装新版 NeoForge 时崩溃，
+> 这正是上游作者在 2026-10-05 重钉版本的原因。）
 
 **所有加载器都需要 Java 25。**
 

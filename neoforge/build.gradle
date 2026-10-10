@@ -3,6 +3,32 @@ plugins {
     id 'com.gradleup.shadow'
 }
 
+// ---------------------------------------------------------------------------
+// Offline NeoForge dependency source (opt-in, machine-local).
+//
+// This network cannot reach maven.neoforged.net directly, so on 2026-10-10 the five
+// NeoForge artefacts were downloaded by hand into ../local-maven and are resolved from
+// there. That directory is git-ignored, so a fresh clone is unaffected and Gradle falls
+// back to the real repository.
+//
+// Enable with:   ./gradlew :neoforge:build -PlocalMaven
+// Disable by omitting the flag. Delete ../local-maven to reclaim the ~13 MB.
+// ---------------------------------------------------------------------------
+if (project.hasProperty('localMaven')) {
+    repositories {
+        maven {
+            name = 'LocalNeoForgeMirror'
+            url = rootProject.file('local-maven').toURI()
+            metadataSources {
+                gradleMetadata()
+                mavenPom()
+                artifact()
+            }
+            content { includeGroup 'net.neoforged' }
+        }
+    }
+}
+
 sourceSets.main {
     java.srcDir project(':common').file('src/main/java')
     resources.srcDir project(':common').file('src/main/resources')
