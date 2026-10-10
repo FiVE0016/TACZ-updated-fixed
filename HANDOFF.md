@@ -57,6 +57,35 @@ FiVE0016/TACZ-updated-fixed                ← 本仓库
   —— 说明本仓库是**从一份 26.2 版本升级上来的**，不是从零移植
 - 该笔记里多处提到"四个加载器"（`all four loaders`），说明母本工程本身就已经是多加载器工程
 - `README.md` 与四个模组描述文件的 `contributors` 里已列出 Sh1roCu 与 q14433686-arch
+- **母本仓库已定位**（2026-10-10 查证）：[`fmpapierz/TACZ-updated`](https://github.com/fmpapierz/TACZ-updated)
+  —— 它的根目录下**同时存在** `common/`、`fabric/`、`quilt/`、`neoforge/`、`forge/`、`docs/`
+  六个目录，即**四加载器架构在母本里就是现成的**
+
+### 母本（直接上游）已确认：fmpapierz / Hooneybadgers ★
+
+| 项 | 值 |
+|---|---|
+| 仓库 | [`fmpapierz/TACZ-updated`](https://github.com/fmpapierz/TACZ-updated)（"TACZ updated for modern minecraft"） |
+| 作者 | GitHub **fmpapierz**；CurseForge 上的名字是 **Hooneybadgers** |
+| 创建 | 2026-09-20 |
+| 最后推送 | 2026-09-20（**建仓当天之后就没有新提交**） |
+| 规模 | 0 star、0 fork、1 个 issue（就是本仓库主人自己提的）、无 Release |
+| 许可 | GPL-3.0 |
+
+**它是怎么被确定的**：仓库主人用自己另一个 GitHub 账号 `FiVE0016`，在
+[`fmpapierz/TACZ-updated#1`](https://github.com/fmpapierz/TACZ-updated/issues/1) 提交过一份
+《TaCZ Reforged 1.1.8+mc26.3 (Fabric) — 完整修复指南》，其中写明"源码仓库：fmpapierz/TACZ-updated
+（main 分支）、作者：fmpapierz (CurseForge: Hooneybadgers)"。该 issue 至今**无人回复**。
+
+> ⚠️ **待仓库主人确认的一点**：`fmpapierz` 与 `FiVE0016` 是不是同一个人的两个账号，
+> 目前**无法从公开信息判定**（两个账号的仓库互不交织）。本文件因此只陈述事实，不替谁下结论。
+> 如果两者是同一个人，那么"母本"其实就是本仓库主人自己的早期版本；
+> 如果不是，那 fmpapierz 才是母本作者，本仓库是**第三方再加工**。
+> **这一条必须由仓库主人本人澄清后才能对外写死。**
+
+**实用价值**：母本仓库还在、可访问，所以以后**同步上游时可以直接对照它**，
+不必再靠猜。它最后更新停在建仓当天（09-20），而本仓库首次提交是 09-30，
+两者之间的差异**就是本仓库实际做的事**——这也是将来判定"谁做了什么"最可靠的依据。
 
 ### 哪些东西是母本自带的（**不要记到本仓库头上**）★
 
@@ -98,13 +127,13 @@ FiVE0016/TACZ-updated-fixed                ← 本仓库
 
 ### 已知不明之处（如实记录，不要掩盖）
 
-- **母本工程（那份"26.2 四加载器"版本）的确切仓库地址仍未确认**：仓库主人本人也记不清
-  当初下载的是哪一位作者的版本。**注意：它不一定是 `q14433686-arch` 名下的仓库**——
-  那位作者公开的两条线都是单加载器（Fabric 一条、NeoForge 一条），
-  而母本已经是四加载器，所以它更可能是**另一个人**做的工程。找到它之前，不要往任何具体人名上安。
-  **如果仓库主人哪天想起了来源，请务必补进上面那张链条图，并同步改本节。**
-- 一个可能的追查方向：本仓库的代码是**从母本整体复制**过来的（不是 fork、不是 git clone 关系），
-  所以 `git log` 里看不到母本的任何历史。要找母本，只能靠仓库主人的记忆或那份原始下载文件。
+- **`fmpapierz` 与 `FiVE0016` 的关系未确认**（见上表下方的警示框）：是同一个人两个账号，
+  还是两位不同的人？这决定本仓库的定性是"自己早期版本的续作"还是"第三方再加工"。
+  **在仓库主人澄清之前，对外一律按"第三方再加工 / 多加载器衍生"表述**——这是更保守、
+  也更不容易得罪人的说法。
+- 本仓库的代码是**从母本整体复制**过来的（不是 fork、不是 git clone 关系），
+  所以 `git log` 里看不到母本的任何历史。要找"本仓库到底改了什么"，
+  唯一办法是**与母本仓库 `fmpapierz/TACZ-updated` 逐文件对比**。
 - 代码里能同时看到 Fabric 与 NeoForge 两套来源的痕迹（例如 REI 插件位于 `cn.sh1rocu.tacz.compat.rei`，
   而 NeoForge 专属的 REI 插件位于 `com.tacz.guns.neoforge.compat.rei`），说明母本工程是对两条线做过合流的。
 - **如果发现本节的描述与事实不符，先改本节，再改代码。**

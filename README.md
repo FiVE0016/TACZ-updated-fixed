@@ -14,12 +14,12 @@
 > MCModderAnchor/TACZ（官方，仅 1.20.1）
 >   └─ Sh1roCu/TACZ-Refabricated（社区 Fabric 移植）
 >        └─ q14433686-arch/TaCZ_Refabricated_Unofficial（Fabric 26.x 线）
->             └─ 一份「26.2 四加载器」工程（母本，出处待考）
->                  └─ 本仓库：母本的 26.3 版本
+>             └─ fmpapierz/TACZ-updated（母本，"TaCZ Reforged"，四加载器，2026-09-20）
+>                  └─ 本仓库：母本的 26.3 修订版
 > ```
 >
 > **注意：四加载器架构（`common` + 四个加载器模块）是母本自带的，不是本仓库做的。**
-> 本仓库做的是把这份工程推进到 26.3 并产出可用成品；`docs/PORTING_NOTES_26.3.md`
+> 本仓库做的是在母本基础上继续修订并产出可用成品；`docs/PORTING_NOTES_26.3.md`
 > 也与上游 `TaCZ_Renovated` 的 26.3 移植指南同源，不是本仓库原创。
 >
 > 因此：**请不要把本仓库称为「26.3 搬运版」**，也不要以为移植工作由本仓库完成。
