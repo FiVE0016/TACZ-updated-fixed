@@ -1,11 +1,28 @@
 # Timeless and Classics Guns: Zero — Minecraft 26.3（Fabric · Quilt · NeoForge · Forge）
 
 [Timeless and Classics Guns: Zero](https://github.com/MCModderAnchor/TACZ)（简称 TACZ）的**非官方** 26.3 移植版，
-基于同一套代码同时支持四种加载器。它 upstream 自 Forge 1.20.1 的原版 TACZ，以及 Fabric 专用的 26.2 移植
-[TaCZ Refabricated](https://github.com/q14433686-arch/TaCZ_Refabricated_Unofficial)
-（后者又源自 [Sh1roCu/TACZ-Refabricated](https://github.com/Sh1roCu/TACZ-Refabricated)）。
+基于同一套代码同时支持四种加载器。
 
-本移植与 TACZ、TaCZ Refabricated、LRTactical 的作者**都没有关联，也不受他们支持**。
+> ### ⚠️ 关于署名：本仓库**不是**源搬运版
+>
+> **26.3 的移植工作不是本仓库做的。** 本仓库是在社区已有的 26.3 搬运版源码之上
+> **继续加工**的产物，定位是「**多加载器衍生版 / 再加工**」，不是源搬运者，也不是从零移植。
+>
+> 上游链条：
+>
+> ```
+> MCModderAnchor/TACZ（官方，仅 1.20.1）
+>   └─ Sh1roCu/TACZ-Refabricated（社区 Fabric 移植）
+>        └─ q14433686-arch/TaCZ_Refabricated_Unofficial（Fabric 26.x 线）
+>             └─ 一份 26.2 多加载器工程（母本，出处待考）
+>                  └─ 本仓库：升级到 26.3 并整理为四加载器结构
+> ```
+>
+> 因此：**请不要把本仓库称为「26.3 搬运版」**，也不要以为移植工作由本仓库完成。
+> 完整的署名信息、被搬入的第三方代码清单（约 17,700 行，占核心代码 21.5%）与判断依据，
+> 见仓库根目录的 [HANDOFF.md](HANDOFF.md) 第 0 节。
+
+本移植与 TACZ、TaCZ Refabricated、LRTactical、TacZMeshLoader 的作者**都没有关联，也不受他们支持**。
 **请不要把本移植的问题报告给他们。**
 
 ---
