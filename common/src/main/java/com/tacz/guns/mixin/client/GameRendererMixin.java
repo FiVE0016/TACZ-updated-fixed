@@ -119,6 +119,17 @@ public abstract class GameRendererMixin {
                                   CallbackInfo ci) {
         this.tacz$renderingItemInHand = false;
         ScopeMaskRenderer.setInHandPass(false);
+        // 【2026-10-10 准星/目镜框后置重画 · 顺序修正】
+        //
+        // 旧调用点（LevelRenderer#render 之后）跑在【手部矩阵抓取点之前】——
+        // 光影下那里 handTransform 永远是 null，重画从未执行过（日志里从来没有
+        // "Redrew ocular ring" 就是铁证）。真正的正确时刻是这里：
+        //   · PIP 合成已在 LevelRenderer#render 内部的 Iris finalize TAIL 完成；
+        //   · 手部矩阵已在本方法的 createRenderPass BEFORE 处抓取（见
+        //     tacz$scopeMaskBeforeHandPass）；
+        //   · 本方法已返回，之后只剩描边/GUI —— 重画在这里不会被再覆盖。
+        // 队列为空或矩阵未抓到时内部立即返回，零开销。
+        ScopeFinalOverlayState.renderAfterLevelComposite();
     }
 
     @Unique
@@ -204,17 +215,27 @@ public abstract class GameRendererMixin {
     )
     private void tacz$captureSceneForScopePip(CallbackInfo ci) {
         ScopePipTrace.mark("VANILLA LevelRenderer#render END (anything after this draws over the finished world)");
-        ScopePipRenderer.captureScene(this.minecraft);
-        // 【光影路径】Iris 把手部渲染搬进了 LevelRenderer#render 内部，所以此刻整条
-        // Iris 管线已经收工，主 target 里是最终画面 —— 直接在它上面做镜内放大。
-        // 无光影时这一句立即返回（合成仍在阶段边界完成，那里才能让准星盖在 PIP 之上）。
-        ScopePipRenderer.compositeAfterLevelUnderShaders();
-        // 【光影后置目镜框】必须紧跟在合成之后（同一注入点内）：光影下合成排在
-        // 手持之后、会把物理目镜框盖掉，这里把帧内排队的 ocular_ring 快照用
-        // 无雾管线重画回来。不能挂 finalizeLevelRendering TAIL —— 那跑在
-        // LevelRenderer#render 内部、早于本合成，挂那里等于没延后。
-        // 队列为空（无光影/未排队）时立即返回。
-        com.tacz.guns.client.render.scope.ScopeFinalOverlayState.renderAfterLevelComposite();
+        // 【2026-10-10 搬移】抓帧与合成<b>不再</b>在这里做。
+        //
+        // 原先这两句挂在这里，理由是「Iris 把手部渲染搬进了 LevelRenderer#render 内部，
+        // 所以此刻整条 Iris 管线已经收工，主 target 里是最终画面」。实机证明该前提不成立：
+        // 那一刻主帧缓冲里还没有画面，两个模式都产出黑镜片（详见 IrisLevelFinalScopePipMixin
+        // 的类注释与 docs/黑镜片定位结论.md）。
+        //
+        // 现在改由 IrisLevelFinalScopePipMixin 挂在
+        // IrisRenderingPipeline#finalizeLevelRendering 的 TAIL —— 那才是 Iris
+        // composite/final 全部跑完的位置。这条机制来自本线上游 1.21.11 分支的同一个修复
+        // （commit 2710c7c），26.3 移植时漏掉了。
+        //
+        // ⚠️ 不要在这里把它们加回来：会造成每帧两次合成，而先跑的那次用的是空素材。
+
+        // 【光影后置目镜框/准星】原本在下面调用 renderAfterLevelComposite()。
+        // 【2026-10-10 移走】这个注入点（LevelRenderer#render 之后）跑在
+        // renderItemInHand【之前】——此时本帧的目镜掩码还没画出来，若在这里重画，
+        // 准星会用【上一帧】的掩码做反向裁剪。正确的重画点已改到
+        // renderItemInHand 的 RETURN（见 tacz$endHandPass）：
+        // 那里掩码已画好、手持矩阵已在排队点抓好、合成也已完成，
+        // 之后只剩描边/GUI，重画不会被覆盖。
     }
 
     /**

@@ -12,7 +12,9 @@
     "IrisGlCommandEncoderMixin",
     "IrisExtendedShaderMixin",
     "IrisScopeDimensionMixin",
-    "IrisShadowResolutionMixin"
+    "IrisShadowResolutionMixin",
+    "IrisLevelFinalScopePipMixin",
+    "IrisHandScopePassMixin"
   ],
   "injectors": {
     "defaultRequire": 0

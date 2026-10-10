@@ -215,6 +215,19 @@ public final class ScopeBodyRenderTypes {
     private static final RenderPipeline RETICLE_EMISSIVE_PIPELINE =
             buildPipeline("scope_reticle_emissive_clipped", true, true, true);
 
+    /**
+     * 蚀刻准星 · 光影后置重画版：与 {@link #RETICLE_PIPELINE} 同配方，
+     * 但<b>不</b>注册给 Iris 的 HAND 程序 —— 供 {@code ScopeFinalOverlayState}
+     * 在 PIP 合成之后重画准星用（理由与 {@link #FINAL_OCULAR_RING_PIPELINE} 相同：
+     * 注册了就会被塞回光影管线，既拿不到无雾语义又会被后置 pass 再盖一次）。
+     */
+    private static final RenderPipeline RETICLE_FINAL_PIPELINE =
+            buildPipeline("scope_reticle_final", true, true, false);
+
+    /** 发光准星 · 光影后置重画版：同上，满亮且不受方向光影响。 */
+    private static final RenderPipeline RETICLE_EMISSIVE_FINAL_PIPELINE =
+            buildPipeline("scope_reticle_emissive_final", true, true, true);
+
     /** 发光准星无掩码回退：满亮且不受方向光影响。 */
     private static final RenderPipeline EMISSIVE_PIPELINE =
             buildPipeline("scope_reticle_emissive", false, false, true);
@@ -318,6 +331,8 @@ public final class ScopeBodyRenderTypes {
     private static final Map<Identifier, RenderType> ARM_CACHE = new HashMap<>();
     private static final Map<Identifier, RenderType> RETICLE_CACHE = new HashMap<>();
     private static final Map<Identifier, RenderType> RETICLE_EMISSIVE_CACHE = new HashMap<>();
+    private static final Map<Identifier, RenderType> RETICLE_FINAL_CACHE = new HashMap<>();
+    private static final Map<Identifier, RenderType> RETICLE_EMISSIVE_FINAL_CACHE = new HashMap<>();
     private static final Map<Identifier, RenderType> EMISSIVE_CACHE = new HashMap<>();
     private static final Map<Identifier, RenderType> FLASH_TRANSLUCENT_CACHE = new HashMap<>();
     private static final Map<Identifier, RenderType> FLASH_SWIRL_CACHE = new HashMap<>();
@@ -364,6 +379,21 @@ public final class ScopeBodyRenderTypes {
         ensureIrisCompatibility();
         return RETICLE_EMISSIVE_CACHE.computeIfAbsent(texture,
                 tex -> create("tacz_scope_reticle_emissive_clipped", RETICLE_EMISSIVE_PIPELINE, tex, true));
+    }
+
+    /**
+     * 蚀刻准星 · 光影后置重画版（{@code ScopeFinalOverlayState} 专用）。
+     * 与 {@link #reticle} 同裁剪语义，但不注册给 Iris。
+     */
+    public static RenderType reticleFinal(Identifier texture) {
+        return RETICLE_FINAL_CACHE.computeIfAbsent(texture,
+                tex -> create("tacz_scope_reticle_final", RETICLE_FINAL_PIPELINE, tex, true));
+    }
+
+    /** 发光准星 · 光影后置重画版（{@code ScopeFinalOverlayState} 专用）。 */
+    public static RenderType reticleEmissiveFinal(Identifier texture) {
+        return RETICLE_EMISSIVE_FINAL_CACHE.computeIfAbsent(texture,
+                tex -> create("tacz_scope_reticle_emissive_final", RETICLE_EMISSIVE_FINAL_PIPELINE, tex, true));
     }
 
     /** 发光准星：无裁剪回退 + 满亮/无方向光。 */

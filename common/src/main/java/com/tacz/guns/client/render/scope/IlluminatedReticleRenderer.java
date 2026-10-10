@@ -143,6 +143,12 @@ public final class IlluminatedReticleRenderer implements IReticleRenderer {
             ctx.collector().submitCustomGeometry(
                     identity, ctx.illuminatedRenderType(),
                     (entryPose, consumer) -> snapshot.write(consumer));
+            // 【光影后置重画】光影下合成排在手部 pass 之后，会把准星盖掉。
+            // 排队一份冻结快照，在 PIP 合成之后用后置版管线重画回来（与目镜框同机制）。
+            if (ScopePipRenderer.wantsIrisComposite()) {
+                ScopeFinalOverlayState.queueReticle(snapshot,
+                        ScopeBodyRenderTypes.reticleEmissiveFinal(ctx.texture()));
+            }
         }
     }
 }

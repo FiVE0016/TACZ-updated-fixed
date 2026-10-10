@@ -15,6 +15,7 @@ import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.textures.FilterMode;
 import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.tacz.guns.GunMod;
 import com.tacz.guns.api.DefaultAssets;
 import com.tacz.guns.api.TimelessAPI;
@@ -209,6 +210,22 @@ public final class ScopePipRenderer {
 
     /** 场景纹理里是否有一张可用的本帧镜内画面。 */
     private static boolean sceneCaptured = false;
+
+    /**
+     * 「镜内那一遍已经画完，但 Iris 的成品还躺在主帧缓冲里、尚未被 vanilla 覆盖」的书签。
+     *
+     * <p>光影 + 二次渲染模式下，{@link #renderScopeView} 不再自己做拷贝（那时主帧缓冲还是空的），
+     * 只把本标志置位；真正的拷贝由 {@code IrisLevelFinalScopePipMixin} 在
+     * {@code IrisRenderingPipeline#finalizeLevelRendering} 的 TAIL 上、
+     * 调用 {@link #captureScopePassAfterIrisFinal()} 完成。</p>
+     *
+     * <p>窗口只有「本帧的 scope pass 结束 → vanilla 主画面那一遍的清屏」之间那么短，
+     * 所以标志必须在拷贝成功后立刻清掉，避免下一帧误拷一份过期的画面。</p>
+     */
+    private static boolean scopePassReadyToCapture = false;
+
+    /** 二次渲染模式下，镜内画面首次成功拷贝的播报标志。 */
+    private static boolean rerenderCaptureLogged = false;
 
     /**
      * 「{@code mainRenderTarget()} 正在被重定向」窗口，同时就是要顶上去的那个 target。
@@ -893,6 +910,39 @@ public final class ScopePipRenderer {
     // ------------------------------------------------------------------
 
     /**
+     * 【2026-10-10】把一张纹理"拷贝"进另一张纹理 —— 但用<b>记录进命令流的 blit 通道</b>，
+     * 而不是立即执行的 {@code copyTextureToTexture}。
+     *
+     * <h2>为什么必须这样</h2>
+     * {@code copyTextureToTexture} 的底层是立即执行的 {@code glBlitFramebuffer}
+     * （字节码实读），读的是源纹理<b>此刻</b>的内容。而 Iris 的最终合成
+     * （{@code FinalPassRenderer#renderFinalPass}）是用 {@code createRenderPass}
+     * <b>记录</b>进命令流的，稍后才执行。立即拷贝永远抢在最终合成前面，
+     * 拿到的是上一帧（甚至更早）的旧画面。
+     *
+     * <p>这个 blit 通道记录在同一命令流里，执行顺序上排在本帧 Iris 最终合成
+     * <b>之后</b>——那一刻主帧缓冲里是本帧真画面。</p>
+     *
+     * <h2>配方</h2>
+     * 完全照 vanilla {@code RenderTarget#blitAndBlendToTexture}（字节码实读）：
+     * {@code ENTITY_OUTLINE_BLIT}（screenquad + blit_screen + InSampler）+ NEAREST 采样 +
+     * 全屏三角形 draw(3,1,0,0)。不设深度、不清空。
+     */
+    private static void deferredBlitCopy(GpuTextureView source, TextureTarget dest) {
+        CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
+        try (RenderPass pass = encoder.createRenderPass(
+                () -> "tacz_scope_pip_copy",
+                dest.getColorTextureView(),
+                Optional.empty())) {
+            pass.setPipeline(RenderSystem.getCompiledPipeline(RenderPipelines.ENTITY_OUTLINE_BLIT));
+            RenderSystem.bindDefaultUniforms(pass);
+            pass.setUniform("InSampler", source,
+                    RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
+            pass.draw(3, 1, 0, 0);
+        }
+    }
+
+    /**
      * 把刚画完的世界拷进离屏纹理，留给稍后的合成阶段重采样。
      *
      * <h3>为什么必须卡在这一刻</h3>
@@ -944,14 +994,19 @@ public final class ScopePipRenderer {
                 sceneCaptured = false;
                 return;
             }
-            // 逐像素拷贝。两张纹理都是 RenderTarget#createBuffers 建的，
-            // usage 位是 15 = COPY_DST|COPY_SRC|TEXTURE_BINDING|RENDER_ATTACHMENT
-            //（字节码 bipush 15 实读），拷贝所需的两个位都在。
+            // 【2026-10-10 关键修复】这里原先用 copyTextureToTexture —— 它是【立即执行】的
+            // glBlitFramebuffer（字节码实读：bindFrameBufferTextures + blitFrameBuffers），
+            // 读的是源纹理【此刻】的内容。而 Iris 的最终合成（renderFinalPass）是用
+            // createRenderPass【记录】进命令流的，要等帧图/命令流稍后执行才真正写进主帧缓冲。
             //
-            // 参数顺序照 CommandEncoder#copyTextureToTexture 的边界检查反推：
-            //   (src, dst, mipLevel, dstX, dstY, srcX, srcY, width, height)
-            CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
-            encoder.copyTextureToTexture(source, copy.getColorTexture(), 0, 0, 0, 0, 0, w, h);
+            // 于是立即拷贝永远抢跑：源纹理那一刻还是上一帧的旧画面（开镜瞬间"有内容"是旧帧、
+            // 开满后"格子状"是旧帧中心被放大 25 倍、二次渲染纯黑是旧画面都还没写入）。
+            //
+            // 改用【记录进同一命令流的 blit 渲染通道】：它会在命令流执行时、排在本帧
+            // Iris 最终合成【之后】执行，读到的就是本帧真画面。管线用 vanilla 公开的
+            // ENTITY_OUTLINE_BLIT（screenquad + blit_screen + InSampler，字节码实读），
+            // 与 RenderTarget#blitAndBlendToTexture 同一套配方。
+            deferredBlitCopy(main.getColorTextureView(), copy);
             sceneCaptured = true;
             if (!loggedFirstCapture) {
                 loggedFirstCapture = true;
@@ -1138,6 +1193,19 @@ public final class ScopePipRenderer {
             // 在 sortInto 末尾<b>不清空自己</b>，于是紧随其后的主画面那一遍还能
             // 再取一次同样的实体/方块实体/名牌。详见 SimpleFeatureRenderPhaseMixin。
             insideScopeLevelRender = true;
+            // 【2026-10-10 关键修正】这个书签必须【提前到 render 调用之前】置位。
+            //
+            // 原因：IrisLevelFinalScopePipMixin 挂在 finalizeLevelRendering 的 TAIL 上，
+            // 而 finalize 是在 levelRenderer.render(...)【内部】触发的。前几轮把它放在
+            // render 返回之后，等于拷贝方法每次都在旗标还是 false 的时候被调用——
+            // 静默跳过，离屏纹理始终是空的（这解释了路线 B 的纯黑）。
+            //
+            // 现在在 render 之前置位：镜内那一遍的 finalize 触发时，旗标已是 true，
+            // 拷贝方法随即把一次【延迟 blit】记录进命令流——它会在执行阶段、排在
+            // 镜内最终合成之后运行，读到的就是本帧真画面。
+            if (iris) {
+                scopePassReadyToCapture = true;
+            }
             try {
                 // 【26.3 签名变更】render() 去掉了 deltaTracker 与 viewRotationMatrix
                 // 两个参数（前者本就只在内部取 partialTick，后者现在从 CameraRenderState
@@ -1180,20 +1248,22 @@ public final class ScopePipRenderer {
                 redirectTarget = null;
                 ScopePipTrace.mark("SCOPE-PASS END");
             }
+            // 【2026-10-10 关键修正 · 分模式处理 sceneCaptured】
+            //
+            // sceneCaptured 是「本帧有一张可用的镜内画面」的旗标。
+            //   · 光影路径：合成发生在【主画面那一遍】的 finalize，而镜内那一遍离它还隔着
+            //     一次完整的 vanilla 世界渲染，中间任何一处提前返回都会把旗标清掉——
+            //     所以光影下这里【不】置位，由成功的延迟拷贝自己置位
+            //     （见 captureScopePassAfterIrisFinal）。此前把它写死 true 正是
+            //     「拷贝成功、日志有 captured after Iris、但镜片全黑」的成因之一。
+            //   · 无光影路径：pip 在镜内那一遍已直接画好（redirectTarget），本帧即可合成，
+            //     这里必须置位 —— 2026-10-10 曾误删，导致无光影下合成整条停摆
+            //     （实测症状：变倍镜 5x→25x 时镜片内容不更新）。
             if (iris) {
-                // 立刻拷走：紧接着 vanilla 那一遍会把主帧缓冲整个重画。
-                // 这一拷贝就是镜内画面 —— 已经过完整光影着色，且是<b>原生分辨率</b>
-                // 用窄 FOV 真画出来的，不是放大出来的。
-                GpuTexture shaded = main.getColorTexture();
-                if (shaded == null || shaded.isClosed()) {
-                    sceneCaptured = false;
-                    return;
-                }
-                RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(
-                        shaded, pip.getColorTexture(), 0, 0, 0, 0, 0,
-                        Math.min(main.width, pip.width), Math.min(main.height, pip.height));
+                // 什么都不做：交给 captureScopePassAfterIrisFinal 置位。
+            } else {
+                sceneCaptured = true;
             }
-            sceneCaptured = true;
             scopePassCount++;
             // 隔帧渲染的书签：本帧真跑了、成品在这一代 target 里。
             lastScopePassFrame = frameIndex;
@@ -1250,6 +1320,71 @@ public final class ScopePipRenderer {
             // 放在 finally 里：哪怕镜内那一遍中途抛了异常，也绝不能把主画面留在错误的投影上。
             SodiumCompat.resetChunkUniformUpload();
             RenderSystem.setProjectionMatrix(savedProjection, savedProjectionType);
+        }
+    }
+
+    /**
+     * 光影 + 二次渲染模式：把已经完成光影着色的镜内画面，从主帧缓冲拷进镜内纹理。
+     *
+     * <h2>为什么必须在这里拷，而不是 renderScopeView 里</h2>
+     *
+     * {@code renderScopeView} 把窄 FOV 的世界交给 Iris 之后，Iris 的 composite/final
+     * <b>还没跑</b> —— 主帧缓冲那时是空的。实机证据（2026-10-10）：在那一刻拷贝，
+     * 重投影模式得到纯黑、二次渲染模式得到格纹。所以拷贝被推迟到
+     * {@code IrisRenderingPipeline#finalizeLevelRendering} 的 TAIL
+     * （见 {@code IrisLevelFinalScopePipMixin}）。
+     *
+     * <p>那个时刻的性质正好是我们要的：<b>Iris 已经把成品写进主帧缓冲，而 vanilla
+     * 主画面那一遍还没把它覆盖掉</b>。窗口很短，所以本方法由标志驱动、拷完立刻清标志。</p>
+     *
+     * <h2>这样拿到的镜内画面没有信息量上限</h2>
+     *
+     * 它是用窄 FOV <b>真画出来</b>的、原生分辨率、且已完成光影着色 ——
+     * 不是「主画面中心 1/Z 那一小块放大而来」。25 倍镜下重投影只有约 137x58 个源像素
+     * 可用（格纹的成因），而这条路不受该限制。
+     */
+    public static void captureScopePassAfterIrisFinal() {
+        if (!scopePassReadyToCapture) {
+            return;
+        }
+        // 立刻清标志：窗口只有一帧里的一小段，漏清会让下一帧拷到过期画面。
+        scopePassReadyToCapture = false;
+        if (failed) {
+            return;
+        }
+        try {
+            TextureTarget pip = ScopePipTarget.current();
+            if (pip == null) {
+                sceneCaptured = false;
+                return;
+            }
+            Minecraft mc = Minecraft.getInstance();
+            RenderTarget main = mc.gameRenderer.mainRenderTarget();
+            if (main == null) {
+                sceneCaptured = false;
+                return;
+            }
+            // 注意：此刻我们【不在】重定向窗口内（redirectTarget 已复位），
+            // 所以 mainRenderTarget() 返回的是真正的主帧缓冲。
+            // 【2026-10-10】这里同样改成延迟 blit：立即拷贝会抢在 Iris 最终合成之前，
+            // 只能拿到旧帧。deferredBlitCopy 记录在命令流里、排在镜内最终合成之后执行。
+            GpuTexture shaded = main.getColorTexture();
+            if (shaded == null || shaded.isClosed()) {
+                sceneCaptured = false;
+                return;
+            }
+            deferredBlitCopy(main.getColorTextureView(), pip);
+            sceneCaptured = true;
+            if (!rerenderCaptureLogged) {
+                rerenderCaptureLogged = true;
+                GunMod.LOGGER.info("[TACZ Scope] Scope PIP second-render pass captured after Iris' final composite: "
+                                + "{}x{} at {}x magnification (native resolution, no reprojection limit).",
+                        pip.width, pip.height, scopeMagnification());
+            }
+        } catch (Throwable t) {
+            sceneCaptured = false;
+            GunMod.LOGGER.error("[TACZ Scope] Deferred scope-pass capture (Iris final) failed; "
+                    + "falling back to whole-screen FOV zoom.", t);
         }
     }
 

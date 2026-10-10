@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.tacz.guns.client.model.bedrock.BedrockPart;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemDisplayContext;
 
 /**
@@ -73,6 +74,8 @@ public interface IReticleRenderer {
      *                       <p>{@link EtchedReticleRenderer} 必须看这个标志：
      *                       {@code division} 里混着大块遮光板，只有在掩码把它们裁掉时
      *                       才能安全绘制，否则会糊住屏幕（第 9 轮的教训）。</p>
+     * @param texture        镜身贴图的 Identifier。光影后置重画（ScopeFinalOverlayState）
+     *                       需要用它解析对应的「后置版」RenderType。
      */
     record Context(PoseStack poseStack,
                    SubmitNodeCollector collector,
@@ -82,6 +85,7 @@ public interface IReticleRenderer {
                    int light,
                    int overlay,
                    float aimingProgress,
-                   boolean maskActive) {
+                   boolean maskActive,
+                   Identifier texture) {
     }
 }
