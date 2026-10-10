@@ -32,7 +32,12 @@ ext.bundledExclusions = [
         'org/luaj/vm2/server/**',
         'lua.class',
         'luac.class',
-        'luajc.class',
+        // The Figura fork of LuaJ builds its command line tools in the default package, so
+        // their classes land at the jar root and only their outer names matched before. The
+        // wildcard is what actually removes luajc$1 / luajc$InputFile / luajc$LocalClassLoader,
+        // which an audit of the release jar found still shipping. Verified after the change by
+        // listing the jar: zero entries matching "luajc".
+        'luajc*.class',
 ]
 
 subprojects {

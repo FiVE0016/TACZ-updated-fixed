@@ -57,16 +57,24 @@
 |---|---|
 | Fabric | Fabric Loader 0.19.5+ 与 Fabric API 0.160.7+26.3 |
 | Quilt | Quilt Loader 0.31.0-beta.4+ 与 Fabric API 0.160.7+26.3（QSL 没有 26.x 版本） |
-| NeoForge | NeoForge 26.3.0.4-beta+（26.3 目前只有 beta） |
-| Forge | Forge 26.3-66.0.2+ |
+| NeoForge | **正好 26.3.0.4-beta** —— 见下方警告，不要装更新的 beta |
+| Forge | Forge 26.3-66.0.2（**本仓库默认不构建 Forge 包**，见下） |
+
+> ⚠️ **NeoForge 版本是"钉死"的，不是"最低要求"。**
+> 本版本是按 `26.3.0.4-beta` 编译的。更新的 NeoForge 26.3 beta（例如 `26.3.0.51-beta`）
+> 移除了 FML 的 `ModConfig.Type.COMMON/SERVER`，按旧版编译的 jar 装上去会
+> **`NoSuchFieldError` 崩溃、进不去游戏**。请严格使用上表所列版本。
+> 修法见 `HANDOFF.md` 任务 1。
 
 **所有加载器都需要 Java 25。**
 
 请使用与加载器匹配的 jar；每个 jar 都自带依赖库（LuaJ、Commons Math、Mayday Animation Engine），
 并且做了重定位（relocate），不会与其他 mod 冲突。
 
-`gradle.properties` 里的 `forge_enabled` 设为 `false` 时，构建会跳过 `forge` 模块——
-在等待 Forge 适配新版本时很有用。
+**Forge 包默认不会被构建**：`gradle.properties` 里的 `forge_enabled=false`。
+所以 `build/libs` 里通常只有 Fabric / Quilt / NeoForge 三个包。
+要出 Forge 包需把该开关改成 `true`，且构建过程需要联网。
+**目前的 Forge 支持属于实验性质，尚未通过实机验证。**
 
 ---
 
