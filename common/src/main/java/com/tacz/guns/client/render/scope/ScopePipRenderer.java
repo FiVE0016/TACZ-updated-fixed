@@ -978,32 +978,27 @@ public final class ScopePipRenderer {
     }
 
     /**
-     * 把刚画完的世界拷进离屏纹理，留给稍后的合成阶段重采样。
+     * 把刚画完的世界拷进离屏纹理，留给稍后的合成阶段重采样（重投影模式专用）。
      *
-     * <h3>为什么必须卡在这一刻</h3>
-     * 由 {@code GameRendererMixin} 注入在 {@code renderLevel} 里
-     * {@code LevelRenderer#render} 那次调用<b>之后</b>：
-     * <ul>
-     *   <li>再早 → 世界还没画完；</li>
-     *   <li>再晚（越过 {@code renderItemInHand}）→ 拷贝里会混进枪和手，
-     *       镜片里就会出现一把缩小的枪。</li>
-     * </ul>
-     * 这个位置正好是「世界已完成、视模尚未开始」的唯一窗口
-     * （renderLevel 偏移 405 之后、502 的 renderItemInHand 之前）。
+     * <h3>调用时机（2026-10-10 起）</h3>
+     * 由 {@code IrisLevelFinalScopePipMixin} 在
+     * {@code IrisRenderingPipeline#finalizeLevelRendering} 的 TAIL 上调用
+     * —— 那是 Iris 最终合成真正收工的位置。更早的注入点
+     * （{@code LevelRenderer#render} 之后）实测拿到的是空画面：
+     * 立即执行的纹理拷贝总是抢在 Iris 延迟执行的最终合成之前
+     * （见 {@link #deferredBlitCopy} 与 {@code IrisLevelFinalScopePipMixin} 的注释）。
      *
      * <p>已知的小缺口：发光实体描边由 {@code levelRenderer.doEntityOutline()}
      * 在 {@code renderLevel} 返回<b>之后</b>才贴到主画面（GameRenderer 偏移 275），
-     * 所以镜内看不到那圈描边。属可接受的观感差异，不影响正确性。
+     * 所以镜内看不到那圈描边。属可接受的观感差异，不影响正确性。</p>
      */
     public static void captureScene(Minecraft mc) {
         if (failed || rerenderMode()) {
             // 二次渲染模式下镜内画面由 renderScopeView 产出，不走拷贝。
             return;
         }
-        // 光影下这个注入点的含义不同：Iris 把手部渲染搬进了 LevelRenderer#render 内部，
-        // 于是「LevelRenderer#render 之后」= 整条 Iris 管线（延迟光照、composite、
-        // 色调映射、手部）<b>全部跑完</b>之后 —— 抓到的正是最终画面。
-        // 合成随后由 compositeAfterLevelUnderShaders() 在同一处完成。
+        // 光影下本方法只由 IrisLevelFinalScopePipMixin 在 finalizeLevelRendering TAIL 调用；
+        // 拷贝本身是【延迟 blit】（deferredBlitCopy），记录进命令流、排在最终合成之后执行。
         if (!isEnabledForHeldGun() || currentAimingProgress() <= minAimingProgress()) {
             sceneCaptured = false;
             return;
