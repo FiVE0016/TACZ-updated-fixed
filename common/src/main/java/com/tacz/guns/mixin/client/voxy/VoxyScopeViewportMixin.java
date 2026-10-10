@@ -65,7 +65,12 @@ public abstract class VoxyScopeViewportMixin {
         //
         // 所以无论绘不绘制，镜内那一遍都必须拿到<b>自己的</b>视口，
         // 主画面那个从头到尾不被碰。
-        if (tacz$resolveFailed || !ScopePipRenderer.isScopePassActive()) {
+        //
+        // 【2026-10-10 闸门修正】这里原判 isScopePassActive() —— 那在无光影下
+        // 恒为 false（scopePassActive = iris），等于无光影时整条保护都不生效，
+        // 实测症状：镜内远景 LOD 不随倍率缩放。isInsideScopeLevelRender()
+        // 与模式无关，正是注释里「两种模式都要走」的语义。
+        if (tacz$resolveFailed || !ScopePipRenderer.isInsideScopeLevelRender()) {
             return;
         }
         try {

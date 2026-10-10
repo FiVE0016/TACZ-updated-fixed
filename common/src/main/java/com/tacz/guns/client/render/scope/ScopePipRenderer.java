@@ -24,6 +24,7 @@ import com.tacz.guns.api.client.other.KeepingItemRenderer;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.api.item.nbt.AttachmentItemDataAccessor;
+import com.tacz.guns.compat.distanthorizons.DistantHorizonsCompat;
 import com.tacz.guns.compat.iris.IrisCompat;
 import com.tacz.guns.compat.iris.IrisScopePipelineCompat;
 import com.tacz.guns.compat.physicsmod.PhysicsModCompat;
@@ -210,6 +211,12 @@ public final class ScopePipRenderer {
 
     /** 场景纹理里是否有一张可用的本帧镜内画面。 */
     private static boolean sceneCaptured = false;
+
+    /** 【FOV 抽动修复】本次开镜过程里是否已经产出过目镜掩码（粘性，progress 归零时复位）。 */
+    private static boolean aimSessionSawMask = false;
+
+    /** 【FOV 抽动修复】上一帧的开镜进度，用于识别「刚开始开镜」那一帧。 */
+    private static float lastFrameAimingProgress = -1.0f;
 
     /**
      * 「镜内那一遍已经画完，但 Iris 的成品还躺在主帧缓冲里、尚未被 vanilla 覆盖」的书签。
@@ -533,20 +540,37 @@ public final class ScopePipRenderer {
      * （{@code BedrockAttachmentModel#activeGroupIsScope} 判定为 sight 通道时
      * 不登记目镜几何，因为上游 {@code renderSight} 本来就不裁镜身）。</p>
      *
-     * <p>判据直接取模型自己的结论（{@link ScopeMaskRenderer#hasMaskThisFrame()}），
-     * 而不是在这里重算一遍 sight/scope/组合镜的分档 ——
-     * 那套状态机牵扯 {@code views[]} 索引与目镜节点命名，复制一份必然走样。</p>
+     * <h2>2026-10-10 开镜/收镜瞬间视野抽动的修复</h2>
      *
-     * <h3>关于一帧延迟</h3>
-     * FOV 事件发生在 {@code extract} 阶段，掩码画在同一帧稍后的手持渲染里，
-     * 所以这里读到的是<b>上一帧</b>的结论。这不构成问题：
-     * 唯一会读到「旧值 false」的时刻是刚开始抬镜的那一帧，
-     * 而那一帧 {@code aimingProgress ≈ 0.02}，变焦公式
-     * {@code 1 + (zoom - 1) * progress} 算出来几乎就是原始 FOV，
-     * 再经 {@code WORLD_FOV_DYNAMICS} 二阶平滑，肉眼不可见。收镜时同理对称。
+     * 旧判据直接取 {@link #isEnabledForHeldGun()} —— 里面带掩码闸，而掩码闸在
+     * extract 阶段只能读到<b>上一帧</b>的结论。后果（实测，25 倍镜）：
+     * <ul>
+     *   <li>开镜第一帧：上一帧没掩码 → 抑制失效 → 整屏 FOV 按
+     *       {@code 1 + (Z-1)·progress} 跳一下（progress=0.05 时就是 2.2×），
+     *       下一帧抑制恢复又跳回来 —— 抽动；</li>
+     *   <li>收镜最后一帧：掩码停产后抑制退出，对称地再抽一下。</li>
+     * </ul>
+     * 低倍镜（1+4×0.05=1.2）看不出，高倍镜就是肉眼可见的一抽。
+     *
+     * <p>新判据是<b>粘性</b>的：本次开镜过程（progress &gt; 0 期间）只要出过一次掩码
+     * 就持续抑制；开镜第一帧按「progress 刚从 0 转正」提前抑制。纯 sight 通道
+     * （全程无掩码、且倍率闸不过）不受影响，照旧走整屏变焦。</p>
      */
     public static boolean suppressesWorldFovZoom() {
-        return isEnabledForHeldGun();
+        float progress = currentAimingProgress();
+        // 开镜过程结束（progress 归零）时，粘性状态一并复位。
+        if (progress <= 0.0f) {
+            aimSessionSawMask = false;
+        }
+        if (ScopeMaskRenderer.hadMaskLastFrame() || ScopeMaskRenderer.hasMaskThisFrame()) {
+            aimSessionSawMask = true;
+        }
+        boolean justStartedAiming = progress > 0.0f && lastFrameAimingProgress <= 0.0f;
+        lastFrameAimingProgress = progress;
+        if (!aimSessionSawMask && !justStartedAiming) {
+            return false;
+        }
+        return isEnabledForHeldGunIgnoringMask();
     }
 
     /**
@@ -599,16 +623,26 @@ public final class ScopePipRenderer {
     }
 
     private static boolean isEnabledForHeldGun() {
-        String reason = inactiveReason();
+        String reason = inactiveReason(true);
         reportGate(reason);
         return reason == null;
     }
 
     /**
-     * @return {@code null} 表示七道闸门全过；否则返回卡在哪一道的可读说明
+     * 与 {@link #isEnabledForHeldGun()} 相同，但<b>不检查目镜掩码</b>。
+     * 供 extract 阶段就要做决定的调用点（FOV 抑制）用：掩码本帧还没画、
+     * 上一帧的结论又有一帧延迟，用它判断「这把枪该不该走 PIP」就够了。
+     */
+    private static boolean isEnabledForHeldGunIgnoringMask() {
+        String reason = inactiveReason(false);
+        return reason == null;
+    }
+
+    /**
+     * @return {@code null} 表示各道闸门全过；否则返回卡在哪一道的可读说明
      */
     @Nullable
-    private static String inactiveReason() {
+    private static String inactiveReason(boolean requireMask) {
         if (failed) {
             return "disabled after a runtime failure (see the earlier error above)";
         }
@@ -668,7 +702,8 @@ public final class ScopePipRenderer {
         //   合成（手部 pass，掩码刚画完）                        → 看本帧。
         // 取「上一帧或本帧画过」这个并集，三个时机就都成立，
         // 也不必给调用方分叉出两套判据。
-        if (!ScopeMaskRenderer.hadMaskLastFrame() && !ScopeMaskRenderer.hasMaskThisFrame()) {
+        if (requireMask
+                && !ScopeMaskRenderer.hadMaskLastFrame() && !ScopeMaskRenderer.hasMaskThisFrame()) {
             return "no ocular mask produced (sight/red-dot channel, or the mask pass is not running "
                     + "in this renderer setup)";
         }
@@ -1142,6 +1177,15 @@ public final class ScopePipRenderer {
                 sceneCaptured = false;
                 return;
             }
+            // 【第四处必须同步的投影 —— Distant Horizons】
+            // DH 每帧只接受一次投影写入（getNewMvmMatrix 一次性旗标），而那一发
+            // 早在 vanilla renderLevel 设置阶段就用掉了。这里把旗标重新立起来，
+            // 让紧接着的 writeBuffer(窄投影) 被 DH 捕获 —— 否则镜内远景 LOD
+            // 永远按宽 FOV 画（「近景放大、远景纹丝不动」）。光影下 DH 走 Iris
+            // 集成路径，不经过这条链路，所以只在无光影时插手。见 DistantHorizonsCompat。
+            if (!iris) {
+                DistantHorizonsCompat.armCapture();
+            }
             RenderSystem.setProjectionMatrix(projectionBuffer.getBuffer(PROJECTION), ProjectionType.PERSPECTIVE);
             sodiumPatched = SodiumCompat.overrideProjection(NARROW_MATRIX);
             // 【第三处必须同步的投影 —— 漏了它 Voxy 的 LOD 地形不会跟着放大】
@@ -1303,6 +1347,12 @@ public final class ScopePipRenderer {
                 // 必须还原：这个字段是 vanilla 那一遍以及后续所有消费者共用的。
                 // 留着窄投影会让主画面的 Voxy LOD 也跟着放大 —— 正好是反过来的病。
                 camera.projectionMatrix.set(savedCameraProjection);
+                // 【Distant Horizons】镜内那遍已让 DH 捕获了窄投影；现在把主投影
+                // 重写进缓冲并再立一次旗标，让 DH 重新捕获宽 FOV ——
+                // 否则主画面的远景 LOD 会一直用窄投影画。见 DistantHorizonsCompat。
+                if (!iris && DistantHorizonsCompat.armCapture()) {
+                    projectionBuffer.getBuffer(savedCameraProjection);
+                }
             }
             if (physicsPatched) {
                 PhysicsModCompat.restoreProjection();

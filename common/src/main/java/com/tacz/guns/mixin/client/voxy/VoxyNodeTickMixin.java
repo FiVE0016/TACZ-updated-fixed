@@ -46,7 +46,10 @@ public abstract class VoxyNodeTickMixin {
 
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true, require = 0)
     private void tacz$noNodeTickDuringScopePass(CallbackInfo ci) {
-        if (!ScopePipRenderer.isScopePassActive()) {
+        // 【2026-10-10 闸门修正】这里原判 isScopePassActive() —— 无光影下恒为 false，
+        // 与上面「两种模式都拦」的注释不符。改用与模式无关的
+        // isInsideScopeLevelRender()：无光影的镜内那一遍同样不得推进全局节点状态。
+        if (!ScopePipRenderer.isInsideScopeLevelRender()) {
             return;
         }
         if (!tacz$logged) {
