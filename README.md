@@ -1,53 +1,90 @@
-# Timeless and Classics Guns: Zero — Minecraft 26.3（Fabric · Quilt · NeoForge · Forge）
+# TACZ-updated-fixed
 
-[Timeless and Classics Guns: Zero](https://github.com/MCModderAnchor/TACZ)（简称 TACZ）的**非官方** 26.3 移植版，
-基于同一套代码同时支持四种加载器。
+**Timeless and Classics Guns: Zero（TACZ）的 Minecraft 26.3 多加载器修订版。**
 
-> ### ⚠️ 关于署名：本仓库**不是**源搬运版
->
-> **26.3 的移植工作不是本仓库做的。** 本仓库是在社区已有的 26.3 搬运版源码之上
-> **继续加工**的产物，定位是「**多加载器衍生版 / 再加工**」，不是源搬运者，也不是从零移植。
-> 本仓库作者只有一个 GitHub 账号 `FiVE0016`，与母本作者 **`fmpapierz`** 是**两个不同的人**。
->
-> 上游链条：
->
-> ```
-> MCModderAnchor/TACZ（官方，仅 1.20.1）
->   └─ Sh1roCu/TACZ-Refabricated（社区 Fabric 移植）
->        └─ q14433686-arch/TaCZ_Refabricated_Unofficial（Fabric 26.x 线）
->             └─ fmpapierz/TACZ-updated（母本，"TaCZ Reforged"，四加载器，2026-09-20）
->                  └─ 本仓库：母本的 26.3 修订版
-> ```
->
-> **注意：四加载器架构（`common` + 四个加载器模块）是母本自带的，不是本仓库做的。**
-> 本仓库做的是：**发现母本在 26.3 上的致命缺陷（启动崩溃、开镜崩溃等共 5 项）、
-> 在本地修复它们、并产出能正常玩的成品**。缺陷报告全文见
-> [`fmpapierz/TACZ-updated#1`](https://github.com/fmpapierz/TACZ-updated/issues/1)（至今无人回复）。
-> `docs/PORTING_NOTES_26.3.md` 也与上游 `TaCZ_Renovated` 的 26.3 移植指南同源，不是本仓库原创。
->
-> 因此：**请不要把本仓库称为「26.3 搬运版」**，也不要以为移植工作由本仓库完成，
-> 更不要把本仓库当成 `fmpapierz` 的项目。完整的署名信息、被搬入的第三方代码清单
-> （约 17,700 行，占核心代码 21.5%）、以及"哪些是母本自带 / 哪些是本仓库做的"的逐条区分，
-> 见 [HANDOFF.md](HANDOFF.md) 第 0 节。
-
-本移植与 TACZ、TaCZ Refabricated、LRTactical、TacZMeshLoader 的作者**都没有关联，也不受他们支持**。
-**请不要把本移植的问题报告给他们。**
+这不是官方作品，也不是 26.3 的源搬运版。它是一个社区搬运版的**修订版**：站在别人的肩膀上，
+修掉实机游玩中暴露的问题，并把验证结果如实记录下来。
 
 ---
 
-## 关于这个 26.3 移植
+## 代码从哪来
 
-26.3 是一次底层大改：GLFW 换成了 SDL，GPU 抽象搬进了新的 `com.mojang.renderpearl` 库，
-全局的"渲染输出重定向"被改成了显式的 render pass，第一人称手部渲染也改成了提取式渲染状态。
+```
+MCModderAnchor/TACZ（官方，仅 1.20.1）
+  └─ Sh1roCu/TACZ-Refabricated（社区 Fabric 移植）
+       └─ q14433686-arch/TaCZ_Refabricated_Unofficial（Fabric 26.x 线）
+            └─ fmpapierz/TACZ-updated（母本，四加载器，2026-09-20）
+                 └─ 本仓库：母本的 26.3 修订版
+```
 
-本移植跨越了上述全部改动：
+**绝大部分 26.3 移植工作不是本仓库完成的。** 四加载器架构、`common` + 各加载器模块、
+renderpearl（26.3 的新 GPU 抽象）迁移、瞄具画中画链路的 API 重写、Sodium/Iris/Voxy 兼容钩子、
+以及 `docs/PORTING_NOTES_26.3.md` 里的移植笔记，都来自上游链条。
 
-- 构建通过
-- 四种加载器的客户端与独立服务端**都能干净启动，无 mixin 失败**
-- 四种加载器都在世界内实测过开枪、换弹、开镜，**除下方"已知问题"里那条无害的 Hull-fill 回退外无 mod 异常**
-- 改动最大的**瞄具画中画（scope picture-in-picture）链路**，已在四种加载器上端到端跑通
+本仓库做的是**在母本之上继续加工**：用实机测试暴露问题、定位根因、修复并验证。
+逐条区分「母本自带 / 本仓库改动」的清单见 [HANDOFF.md](HANDOFF.md) 第 0 节。
 
-完整的 API 对照表与已验证项见 `docs/PORTING_NOTES_26.3.md`。
+**请不要把本仓库称为「26.3 搬运版」，也不要向 TACZ、TaCZ Refabricated 或母本作者报告本仓库的问题。**
+
+---
+
+## 现状
+
+| 项 | 状态 |
+|---|---|
+| 四种加载器（Fabric / Quilt / NeoForge / Forge）构建 | ✅ 通过，有 CI（`.github/workflows/build.yml`） |
+| Fabric 实机验证 | ✅ 由仓库所有者长期实测：开枪、换弹、开镜、光影开/关、变倍、远景 LOD、开镜手感 |
+| 光影下的瞄具画中画 | ✅ 已修复并实测（25 倍镜：镜内有画面、准星与目镜框正常） |
+| NeoForge / Quilt / Forge 运行 | 编译与 CI 通过；实机运行需要对应环境再次验证 |
+
+**已修复的问题**（都在实机上游玩中暴露）：
+
+1. **光影下镜片全黑** —— 抓帧时机早于 Iris 的最终合成；现已修复（见下方"光影下画中画"）。
+2. **光影下准星消失 / 目镜框被盖** —— 合成排在手持渲染之后；现已后置重画。
+3. **无光影下变倍镜（如 5x→25x）镜片不跟随** —— 旗标误删回归；已修复。
+4. **Distant Horizons 远景不随镜内倍率缩放** —— 新增 DH 投影同步（原仓库只有 Voxy 兼容）。
+5. **开镜 / 收镜瞬间视野抽动（高倍镜）** —— FOV 抑制的一帧延迟；已修复。
+6. NeoForge 版本钉扎过旧会导致崩溃 —— 已升级并声明版本范围。
+7. 自带 LuaJ 保留的危险类（进程 / `io.popen` / `os.execute` / 反射）—— 已移除并有 CI 守卫。
+
+**未修复 / 已知限制**：
+
+- 日志里的 `Hull-fill: could not read back the projection UBO` 无害，会回退到逐立方体描摹。
+- Forge 支持是实验性的，默认不构建（`forge_enabled=false`），未实机验证。
+- NeoForge / Quilt 的实机运行仍需重新验证。
+- 枪包兼容与 Arcana 的限制见下文"枪包"一节。
+
+---
+
+## 光影下的瞄具画中画（Scope PIP）
+
+这是本仓库改动最集中的地方，值得单独说明。
+
+TACZ 的"镜内画中画"默认关闭；开启路径：
+
+```toml
+# config/tacz-client.toml
+ScopePipEnable = true              # 开启画中画
+ScopePipAllowShaderPacks = true    # 光影下也允许（默认 false）
+ScopePipRerender = true            # 二次渲染模式（镜内画质最好，代价是开镜时帧率减半）
+```
+
+**在光影下，这条链路曾经完全不能工作**（镜片纯黑）。上游作者在配置注释里也写明
+"打开试试是安全的，但不能保证观感"。本仓库把它修到了可用的程度，核心是三个根因：
+
+1. **抓帧早于 Iris 最终合成**：立即执行的纹理拷贝总是抢在 Iris 的最终合成之前，
+   拿到的是空画面。改为把拷贝记录进同一命令流、排在最终合成之后执行。
+2. **镜内那一遍把枪身也画了进去**：Iris 把手部渲染搬进了世界渲染内部，
+   镜内画面中央是一块黑（枪身）。现在镜内那一遍跳过手部渲染。
+3. **准星/目镜框被合成盖住**：合成发生在手持渲染之后。现在把准星与目镜框
+   冻结快照、在合成之后重画回来。
+
+验证环境：Fabric 26.3 + Iris 1.11.7 + Complementary 光影，25 倍镜，光影开/关均正常。
+
+**这些修复不是从零发明的**：上游 1.21.11 分支就曾用同类思路修过同一个问题
+（commit `2710c7c`，`IrisFinalScopeOverlayMixin`），26.3 母本里的
+`ScopeFinalOverlayState`、掩码桥接、Sodium/Voxy 兼容钩子也都是现成的基础设施。
+本仓库做的是把这些机制**接对时机、补上缺口、并在实机上验证**。
 
 ---
 
@@ -56,270 +93,87 @@
 | 加载器 | 需要 |
 |---|---|
 | Fabric | Fabric Loader 0.19.5+ 与 Fabric API 0.160.7+26.3 |
-| Quilt | Quilt Loader 0.31.0-beta.4+ 与 Fabric API 0.160.7+26.3（QSL 没有 26.x 版本） |
-| NeoForge | **26.3.0.51-beta 或更新的 26.3 beta** |
-| Forge | Forge 26.3-66.0.2（**本仓库默认不构建 Forge 包**，见下） |
+| Quilt | Quilt Loader 0.31.0-beta.4+ 与 Fabric API 0.160.7+26.3 |
+| NeoForge | **26.3.0.51-beta 或更新的 26.3 beta**（更旧的会崩溃，jar 已声明版本范围主动拒绝） |
+| Forge | Forge 26.3-66.0.2（默认不构建，见"构建"） |
 
-> ⚠️ **NeoForge 有最低版本要求，不要装更旧的。**
-> 本版本按 `26.3.0.51-beta` 编译。更早的 26.3 beta（`.4` ~ `.7`）用的是旧版 FML 配置 API，
-> 本 jar 装上去会 **`NoSuchFieldError` 崩溃、进不去游戏**。
-> 成品 jar 内已声明 `versionRange = "[26.3.0.51-beta,)"`，所以 NeoForge 会**主动拒绝**过旧的版本，
-> 而不是放行后崩溃——但请仍然按上表的版本安装。
->
-> （变更记录：2026-10-10 从 `26.3.0.4-beta` 升到 `26.3.0.51-beta`。前者会让玩家装新版 NeoForge 时崩溃，
-> 这正是上游作者在 2026-10-05 重钉版本的原因。）
-
-**所有加载器都需要 Java 25。**
-
-请使用与加载器匹配的 jar；每个 jar 都自带依赖库（LuaJ、Commons Math、Mayday Animation Engine），
-并且做了重定位（relocate），不会与其他 mod 冲突。
-
-**Forge 包默认不会被构建**：`gradle.properties` 里的 `forge_enabled=false`。
-所以 `build/libs` 里通常只有 Fabric / Quilt / NeoForge 三个包。
-要出 Forge 包需把该开关改成 `true`，且构建过程需要联网。
-**目前的 Forge 支持属于实验性质，尚未通过实机验证。**
+所有加载器都需要 **Java 25**。
 
 ---
 
 ## 构建
 
 ```bash
-./gradlew build
+./gradlew build          # 全部模块
+./gradlew :fabric:build  # 只出 Fabric，快很多
 ```
 
-产物在 `build/libs/`：`tacz-fabric-<version>.jar`、`tacz-quilt-…`、`tacz-neoforge-…`、`tacz-forge-…`。
-（各模块自己 `build/libs` 里的 `-slim` jar **不含**自带依赖库。）
+产物在 `build/libs/`（`fabric/build/libs/` 等模块目录里）。各模块的 `-slim` jar 不含自带依赖库。
 
-开发运行：`./gradlew :fabric:runClient`（或 `:quilt:`、`:neoforge:`、`:forge:`），
-专用服务端用 `runServer`，目录在各模块的 `run-server` 下。
-开发服务端可以在 Gradle 终端直接敲控制台命令，四种加载器都行。
+开发运行：`./gradlew :fabric:runClient`（`:quilt:` / `:neoforge:` / `:forge:` 同理）。
 
-开发客户端会额外加载 Cloth Config（Fabric / Quilt 上还有 Mod Menu），方便试配置界面。
-
-`-PtaczQuickPlay=<世界目录>` 已接在每个加载器的 `runClient` 上，用来传 `--quickPlaySingleplayer`。
-**它在 26.3 上目前不起作用**：参数确实传进了 JVM（进程命令行已验证），但游戏在开发启动下会忽略它——
-即使填一个不存在的世界名也不会报错，说明什么都没传到 `QuickPlay`。
-保留这套接线是因为它 API 正确、成本为零，万一以后 Minecraft 或开发启动器又开始认这个标志就能直接用；
-在那之前请从主菜单打开世界。
-
-只构建单个加载器可以快很多，例如只出 Fabric：
-
-```bash
-./gradlew :fabric:build
-```
+Forge 包默认不构建：`gradle.properties` 里的 `forge_enabled=false`；打开它并联网构建即可出包。
 
 ---
 
 ## 项目结构
 
-- `common/` —— 全部玩法、网络、资源与渲染代码。它只针对原生 Minecraft 编译，
-  **不允许 import 任何加载器 API**；`./gradlew :common:checkLoaderNeutral` 会强制检查这一点。
-- `fabric/`（`quilt/` 模块复用它的源码）、`neoforge/`、`forge/` —— 只有入口点和平台服务。
-
-common 代码通过几个接缝（seam）触达加载器：
-
-| 接缝 | 用途 |
-|---|---|
-| `com.tacz.guns.platform.Platform`、`NetworkPlatform`、`MenuPlatform` | 加载器服务，用 `ServiceLoader` 发现（各模块里 `META-INF/services`） |
-| `com.tacz.guns.network.NetworkHandler#payloads()` | 所有网络包及其编解码、方向、处理器 |
-| `com.tacz.guns.init.TaczRegistration` | 逐个注册表注册内容（NeoForge/Forge 走注册表事件；Fabric 一次性全注册） |
-| `TaczCommonEvents`、`TaczClientEvents`、`ClientSetupEvent`、`ModEntitiesRender` | 生命周期、tick、玩家、命令与客户端注册钩子 |
-| `com.tacz.guns.config.spec.TaczConfigSpec` | 自包含的 TOML 配置（**不需要** Forge Config API Port） |
+- `common/` —— 全部玩法、网络、资源与渲染代码，只针对原生 Minecraft 编译，
+  不允许 import 加载器 API（`:common:checkLoaderNeutral` 强制检查）。
+- `fabric/`、`quilt/`、`neoforge/`、`forge/` —— 入口点与平台服务，经 `ServiceLoader` 接缝触达。
 
 ---
 
 ## 配置
 
 - `config/tacz-common.toml`、`config/tacz-client.toml`、`config/tacz-pre.toml`
-- `<世界>/serverconfig/tacz-server.toml` —— 每个世界一份；当 `defaultconfigs/tacz-server.toml` 存在时会从它复制，
-  客户端进服时会同步过去
+- `<世界>/serverconfig/tacz-server.toml`（每世界一份）
 
-游戏内：`/tacz config`。装了 Cloth Config 还有配置界面（Fabric / Quilt 走 Mod Menu，NeoForge / Forge 走 mod 列表）。
+游戏内：`/tacz config`；装了 Cloth Config 时还有图形配置界面。
+
+### 性能提示（镜内画中画）
+
+二次渲染模式（`ScopePipRerender=true`）在**开镜期间**会把世界多渲染一遍，
+光影下就是整套光影管线多跑一遍——这就是开镜时帧率下降的来源；不开镜时开销接近零。
+
+- `ScopePipRerenderInterval = 2`：镜内画面每两帧重画一次，开镜开销减半，观感几乎无差。
+- `ScopePipResolutionScale`：无光影时可降低镜内渲染分辨率（如 0.5）；
+  **光影下被强制为 1.0**（Iris 画进自己的缓冲，缩小省不掉那遍开销）。
+- `ScopePipShadowScale = 0.5`：降低镜内那一遍的阴影分辨率。
 
 ---
 
 ## 可选联动
 
-TACZ 只在**对方 mod 已安装**时才启用联动。
+TACZ 只在对方 mod 已安装时才启用联动：JEI、Cloth Config、Mod Menu、Iris、
+Player Animation Library、Carry On、Zoomify、Punchy 等（见各加载器可用性）。
 
-| Mod | Fabric | Quilt | NeoForge | Forge | 说明 |
-|---|:---:|:---:|:---:|:---:|---|
-| JEI | ✓ | ✓ | ✓ | ✓ | 配方、配件与弹药查询 |
-| REI | — | — | — | — | REI 完全没有 26.3 构建；联动代码保留，按 26.2 API 编译 |
-| Cloth Config | ✓ | ✓ | ✓ | — | 配置界面。Forge 上用 `/tacz config` 或配置文件 |
-| Mod Menu | ✓ | ✓ | — | — | 配置按钮 |
-| Iris | ✓ | ✓ | ✓ | — | 光影兼容 |
-| Player Animation Library | ✓ | ✓ | ✓ | — | 第三人称动画 |
-| Shoulder Surfing Reloaded | — | — | — | — | 尚无 26.3 构建；代码保留，按 26.2 API 编译 |
-| Carry On | ✓ | ✓ | ✓ | ✓ | |
-| Zoomify | ✓ | ✓ | — | — | Zoomify 只有 Fabric / Quilt 版 |
-| Punchy | ✓ | ✓ | ✓ | ✓ | TACZ 的视图模型会跳过 Punchy 的手部动画 |
-
-表中的"—"表示**对方 mod 还没有 26.3 发布**，不代表支持被砍掉了——TACZ 只在对方存在时才启用，
-等对方发布了这些行会重新亮起。
-
-瞄具画中画渲染器在透过镜片重画世界时，还会同步 Sodium、Iris、Voxy 和 Physics Mod。
-这些钩子用反射实现，mod 不存在时什么都不做。
-
-因对方 mod 没有 26.x 版本而**无法带过来**的联动：KubeJS、Controllable、Accelerated Rendering、
-OptiFine，以及 KosmX 的 playerAnimator（已由 Player Animation Library 取代）。
+镜内画中画会同步 **Sodium、Iris、Voxy、Distant Horizons 与 Physics Mod** 的投影，
+钩子全部走反射，mod 不存在时什么都不做。
 
 ---
 
-## 内置附加内容
+## 枪包与脚本
 
-TaCZ Refabricated 自带三个附加内容，本移植在**所有加载器**上同样自带：
-
-- **LRTactical**：投掷物（手雷、闪光弹、烟雾弹、毒气弹、粘性雷、飞溅雷，以及带引爆器的 C4）、
-  近战武器与消耗品，全部由枪包定义。依赖 `lrtactical` 的枪包仍可加载。
-- **TacZ Mesh Loader**：枪包可以使用高模 `"model_type": "mesh"` 模型。
-  依赖 `taczmeshloader` 的枪包仍可加载。设置在 `tacz-client.toml` 的 `[mesh_loader]` 段。
-- **瞄具画中画**：瞄具可以按自身倍率把世界透过镜片重画一遍。**默认关闭**，
-  用 `tacz-client.toml` 的 `[render]` 段里 `ScopePipEnable` 和 `ScopePipRerender` 打开。
-
-在 Fabric 与 Quilt 上，jar 还像 fork 那样提供 `lrtactical` 和 `taczmeshloader` 两个 mod id，
-因此如果同时装了这两个 mod 的独立版，加载器会拒绝启动。
-NeoForge 与 Forge 上也别装独立版，因为类会冲突。
-
----
-
-## 枪包
-
-现代布局的枪包放在 `.minecraft/tacz/`：
-
-- zip 可以直接加载，也可以解压成目录
-- 无论哪种形式，**包根目录都必须有 `gunpack.meta.json`**；zip 的话该文件必须在压缩包根部，不能再多套一层目录
-- 缺少它时 `GunPackLoader` 不会把它当现代枪包加载；zip 情况会在日志里记 `No gunpack.meta.json found`
-
-**不要只凭"适用于 1.20"这类游戏版本标签判断是否需要转换**——部分 1.20.1 枪包已经是现代布局，
-可以直接放进 `tacz/`。请以包结构为准。
-
-只有旧布局的包才放进 `.minecraft/tacz_backup/`，然后在客户端执行转换命令。
-转换器会生成带 `gunpack.meta.json` 的输出，但它**不能保证**自动修复所有旧资源、配方或脚本差异，
-请保留原包备份并检查游戏日志。
-
-枪包可以在 `gunpack.meta.json` 的 `dependencies` 里声明版本谓词。
-本移植用 `1.1.8` 作为 SemVer 核心，`+mc26.3` 是构建元数据，不参与版本先后比较。
-一个枪包最终能否通过检查，取决于它写下的完整谓词，不能笼统理解为"所有旧包都兼容"。
-
-**本仓库不提供 Arcana**，也没有实现 Arcana 的 API 或资产保护/加载流程。
-明确要求 Arcana 的内容不能视为本 26.x 移植的受支持内容。
-紫黑贴图或模型缺失**本身不能证明**这个包一定依赖 Arcana，也可能是目录层级、资源路径、
-版本谓词或包本身不完整造成的。提交兼容问题时请给出实际包名与版本、完整日志和最小复现环境，
-不要只给缺失贴图截图。
-
----
-
-## 枪包脚本
-
-枪包可以带 Lua 脚本，TACZ 在受限解释器里运行它们：只加载 base、package、bit32、table、string、math 库，
-因此 **没有** `io`、`os`、coroutine 和 `luajava`。
-
-自带的 LuaJ 也去掉了它们背后的类——进程、`io.popen`、`os.execute`、Java 反射与运行时字节码编译器代码——
-所以枪包脚本**无法执行系统命令，也无法触达任意 Java 类**。
-
----
-
-## 已知问题
-
-### 1. 瞄具画中画在光影下「镜片全黑」——**已定位根因**（2026-10-10 实测）
-
-**触发条件（四个，缺一不可）：**
-
-1. `tacz-client.toml` 里 `ScopePipEnable = true`（**默认 false**）
-2. `tacz-client.toml` 里 `ScopePipAllowShaderPacks = true`（**默认 false**）—— 光影下的第二道闸门
-3. 开着光影（Iris + Complementary Reimagined / Unbound 已实测复现）
-4. 瞄具倍率高于 `ScopePipMinMagnification`（默认 4.0x）
-
-**现象**：开镜后**镜片整块黑**（不是偏暗噪点，就是黑）；关掉光影或换低倍镜即恢复正常。
-
-> ⚠️ 此前本节只写了条件 1，并称"默认配置下不会遇到"——**那是不完整的**。
-> 只开条件 1 时，光影下画中画**根本不会运行**（被条件 2 的闸门挡住），
-> 所以既看不到故障、也拿不到任何诊断日志。四个条件同时成立才会重现。
-
-**根因（已实机确认）**：
-
-画中画的**重投影模式**（`ScopePipRerender = false`，默认）会把主画面的颜色纹理**拷一份**，
-再把这份拷贝按倍率放大画进镜片。实测表明：
-
-> **光影开启时，那份拷贝是空的（全黑）。** 也就是说它**拷错了纹理**——
-> Iris 运行时最终画面不在 `mainRenderTarget()` 的颜色纹理里。
-
-**验证方法**（任何人都能复现）：把 `ScopePipDebugPaintLens = true`，镜片会被涂成**品红色**。
-实测结果为**品红铺满 + 随开镜进度生长的动画** —— 这证明：
-
-- 合成那条路**跑得通**（能画、能动画、倍率正确）
-- 只是它放大的**素材本身是黑的**
-
-关键日志（`logs/latest.log`，搜索 `TACZ Scope`）：
-
-```
-Scope PIP gate -> ACTIVE                                    ← 所有闸门通过
-Ocular mask drawn: 288 indices from 7 batches               ← 遮罩正常
-Scope PIP active: reprojecting a ... scene copy at 25.0x    ← 在放大那张"场景拷贝"
-```
-
-**目前的状态**：**未修复**（因为无法在本机实机验证 NeoForge/开发环境，见 `HANDOFF.md`）。
-**默认配置下不会遇到**（条件 1 与 2 默认都是 false）。
-
-**可用的绕过方式**：
-
-| 做法 | 效果 |
-|---|---|
-| 把 `ScopePipAllowShaderPacks` 保持 `false`（**默认**） | 光影下画中画不运行，自动退回**整屏变焦**（正常工作） |
-| 想要镜内放大 | **关掉光影**，或在光影下打开 `ScopePipRerender = true`（二次渲染模式，不依赖那份拷贝；**代价：每帧多跑一遍世界，帧率约减半**） |
-
-> `ScopePipRerender = true` 在光影下能否出图**尚未实测** —— 这是下一步最值得做的实验。
-> 完整的调查记录（证据链、代码定位、四个处理选项）见
-> [`docs/黑镜片定位结论.md`](docs/黑镜片定位结论.md)。
-
-**已确认的部分**：目镜遮罩、渲染目标分配、合成那一遍**每一步都成功、日志零报错**，
-掩码形状是不受光影影响的正圆。**问题只在于拷贝到的素材是黑的。**
-
-**未开镜时镜片本身是黑的，属正常**：那是目镜的实心深色板，只在开镜时才应被遮罩"挖透"。
-
-**影响范围**：默认配置下不会遇到（`ScopePipEnable` 与 `ScopePipAllowShaderPacks` 默认都是 false）。
-
-### 2. 瞄具画中画的画面观感未校验
-
-画中画能跑通，但**没有人检查过画面本身好不好看**。
-它和 mesh GPU 渲染器都是在 26.3 的"显式 render pass"模型上重写的
-（26.3 移除了它们原本依赖的 `RenderSystem` 输出纹理重定向）。
-
-打开 `ScopePipEnable` 后，整条链路在四种加载器上、在 4.5x 与 25x 下都能在世界内跑完，
-没有 render pass 或着色器错误，也不会自我停用。
-**未验证的是画面本身**：构图、对齐，以及透过镜片时的视差。详见 `docs/PORTING_NOTES_26.3.md`。
-
-### 3. Hull-fill 投影 UBO 回读失败（无害）
-
-日志里会出现 `[TACZ Scope] Hull-fill: could not read back the projection UBO`，
-后面跟着 `Buffer is not readable` 的堆栈。**这是无害的**——目镜渲染器会回退到逐立方体描摹（per-cube tracing）。
-
-在 26.2 上这只发生在 Forge；在 26.3 上它**不再特定于某个加载器**（Quilt 上也观察到了），
-这与 26.3 把 GPU 层搬到 `renderpearl` 及其 Vulkan 后端是一致的——在那上面，
-把投影 uniform buffer 映射出来做回读通常不可用。
-
-### 4. 其他
-
-- NeoForge 与 Forge 上，没装 Cloth Config 时 mod 列表里的 TACZ 配置按钮会置灰；
-  Forge 上请用 `/tacz config` 或配置文件
-- 本移植**不带 LRTactical 的展示资产**，所以除非枪包提供模型与动画，近战武器看起来和挥起来都像原版物品
+- 现代布局枪包放 `.minecraft/tacz/`，包根必须有 `gunpack.meta.json`。
+- 旧布局放 `tacz_backup/` 后用客户端命令转换；转换器不保证修复所有差异，请保留备份。
+- 本仓库**不提供 Arcana**，也不实现其 API；明确依赖 Arcana 的内容不受支持。
+- 枪包 Lua 脚本运行在受限解释器里（无 `io` / `os` / `luajava`），
+  自带 LuaJ 也已移除进程、`io.popen`、`os.execute`、反射与字节码编译相关类。
 
 ---
 
 ## 许可与署名
 
-**本仓库不只有一套资产许可，不应把整个仓库简单概括为"两套许可"**——详见 `LICENSE` 与 `LICENSES.md`。
-代码许可不会自动覆盖美术资源；本仓库兼容某个第三方内容包，也不代表取得、转授或改变了该内容包的许可。
+代码许可不自动覆盖美术资源。主要条目：
 
-- **TACZ**：程序 286799714、TartaricAcid、F1zeiL、xjqsh、ClumsyAlien；美术 NekoCrane、Receke、Pos_2333。
-  代码 GPL-3.0；资产（含默认枪包）CC BY-NC-ND 4.0
-- **TaCZ Refabricated**（Fabric 移植）：Sh1roCu，26.x 移植由 q14433686-arch 完成。GPL-3.0
-- **LRTactical**（LesRaisins Tactical Equipements）：代码部分 GPL-3.0。
-  fork 自带的少量 LRTactical 资源（语言文件、物品定义、状态机脚本、两个效果图标与一个音效）按 fork 原样包含
-- **TacZ Mesh Loader**：VellEagle，GPL-3.0。经 TaCZ Refabricated 从 v0.1.7 移植
+- **TACZ**：程序 286799714、TartaricAcid、F1zeiL、xjqsh、ClumsyAlien；
+  美术 NekoCrane、Receke、Pos_2333。代码 GPL-3.0；资产（含默认枪包）CC BY-NC-ND 4.0
+- **TaCZ Refabricated**：Sh1roCu；26.x 线由 q14433686-arch 移植。GPL-3.0
+- **LRTactical**（LesRaisins Tactical Equipements）：代码部分 GPL-3.0
+- **TacZ Mesh Loader**：VellEagle，GPL-3.0
 - 自带库：Mayday Animation Engine（MIT）、LuaJ（Figura fork，MIT）、Apache Commons Math（Apache-2.0）
 
-本移植自身的改动沿用其所修改代码的许可，为 **GPL-3.0**。详见 `LICENSE`。
+本仓库的改动沿用所改代码的许可，为 **GPL-3.0**。详见 `LICENSE`、`LICENSES.md` 与 `HANDOFF.md`。
 
 本项目按"原样"提供，不附带任何担保。
