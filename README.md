@@ -235,6 +235,30 @@ NeoForge 与 Forge 上也别装独立版，因为类会冲突。
 
 **影响范围**：默认配置下不会遇到（画中画默认关闭）。
 
+> ⚠️ **上述"三个条件"是待验证的假设，不是已确认的事实（2026-10-10 注）。**
+>
+> 读代码可以得到一个**更强的结论**：`ScopePipRenderer` 在光影下对画中画有三道闸门，
+> 仅开 `ScopePipEnable` **不足以让画中画在光影下运行**：
+>
+> | 闸门 | 默认 | 作用 |
+> |---|---|---|
+> | `ScopePipEnable` | `false` | 画中画总开关 |
+> | `ScopePipAllowShaderPacks` | **`false`** | 光影下是否允许画中画。默认关，且代码在 `inactiveReason()` 里直接返回 `"a shader pack is active and ScopePipAllowShaderPacks is off"` |
+> | `ScopePipIsolatePipeline` | **`true`** | 为镜内那一遍启用独立 Iris 管线 |
+>
+> 所以"开了画中画 + 开光影"在**默认配置下画中画根本不会运行**，那条路径不可能产生黑镜。
+>
+> **由此有两种可能，尚未分辨：**
+> - **(a)** 黑镜来自 **`ScopeMaskEnable`（目镜遮罩，默认 `true`）**——即默认配置下就会出现，
+>   比本节原先描述的严重得多；
+> - **(b)** 黑镜确实来自画中画，但需要同时打开 `ScopePipAllowShaderPacks`（并可能关掉
+>   `ScopePipIsolatePipeline`）。
+>
+> **分辨方法**：把 `ScopePipDebugPaintLens` 设为 `true`——镜片变**品红**说明画中画那条路跑到了
+> （问题在"画什么"），仍是**黑**说明那条路没走（问题在闸门或遮罩）。
+> 完整操作步骤见 [`docs/黑镜片诊断步骤.md`](docs/黑镜片诊断步骤.md)。
+> **在这个测试做完之前，请不要把上面的"三个条件"当成结论引用。**
+
 ### 2. 瞄具画中画的画面观感未校验
 
 画中画能跑通，但**没有人检查过画面本身好不好看**。

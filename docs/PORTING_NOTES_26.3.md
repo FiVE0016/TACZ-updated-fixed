@@ -1,5 +1,19 @@
 # Porting notes: Minecraft 26.2 → 26.3
 
+> ## ⚠️ 来源说明（2026-10-10 补）
+>
+> **这份笔记不是本仓库原创。** 它与上游姊妹工程
+> [`q14433686-arch/TaCZ_Renovated`](https://github.com/q14433686-arch/TaCZ_Renovated)
+> 的 `docs/lineage/PORT_GUIDE_26_3_FOR_RENOVATED_NEOFORGE_20260921.md`（2026-09-21）
+> **同源**，是该移植指南的衍生文本。
+>
+> 换句话说：**26.3 的移植工作与这份笔记的记录，均非本仓库作者所做。**
+> 本仓库是在母本 [`fmpapierz/TACZ-updated`](https://github.com/fmpapierz/TACZ-updated)
+> 基础上继续修订的第三方衍生版。完整的署名链条与"谁做了什么"的逐条区分，
+> 见仓库根目录的 [HANDOFF.md](../HANDOFF.md) 第 0 节。
+>
+> **请不要把这份文档当成本仓库的成果引用。**
+
 Written while moving this project from the 26.2 tree. 26.3 is not an incremental release: it
 swaps the windowing/input backend, moves the whole GPU abstraction into a new library, replaces
 global render-output redirection with explicit render passes, and converts first-person hand
