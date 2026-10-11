@@ -35,9 +35,12 @@ public class AimKey {
                 if (event.getAction() == InputConstants.PRESS) {
                     IClientPlayerGunOperator.fromLocalPlayer(player).aim(action);
                 }
-                if (KeyConfig.HOLD_TO_AIM.get() && event.getAction() == InputConstants.RELEASE) {
-                    IClientPlayerGunOperator.fromLocalPlayer(player).aim(false);
-                }
+                // 【已删除一段死代码】原先这里还有：
+                //   if (HOLD_TO_AIM && event.getAction() == InputConstants.RELEASE) aim(false);
+                // 但 26.3 的事件管线只送得到 PRESS(1) 与 REPEAT(-1)，RELEASE(0) 从不出现
+                //（与 CrawlKey 那次是同源问题，实测日志：12 次按下 / 55 次重复 / 0 次松开）。
+                // 「按住瞄准」的松开实际上由 onAimHoldingPreInput 每帧轮询 AIM_KEY.isDown() 处理，
+                // 那也是这套逻辑本来就应该在的地方 —— 所以删掉这个分支不改变任何行为。
             }
         }
     }
