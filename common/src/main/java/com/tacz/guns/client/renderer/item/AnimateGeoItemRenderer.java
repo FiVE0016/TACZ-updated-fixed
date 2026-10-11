@@ -203,6 +203,24 @@ public abstract class AnimateGeoItemRenderer<M extends BedrockAnimatedModel, CTX
     }
 
     /**
+     * 更新状态机<b>并把动画写进模型</b>，用于第三人称。
+     *
+     * <p>第一人称走 {@code renderFirstPerson → stateMachine.update()}（会写模型），
+     * 而第三人称原先只走 {@link #visualUpdate}（按它自己的注释：「不会将动画数据写入模型」），
+     * 两边不对称，后果是<b>第三人称下的枪是静止的</b>：开火 / 换弹 / 检视动画都不播放，
+     * 外置建模的炮弹（RPG 弹头、榴弹等）打出去之后也不会从手中模型上消失。</p>
+     *
+     * <p>调用时机与第一人称一致：每帧一次（RenderTickEvent START）。</p>
+     */
+    public void updateAnimation(ItemStack stack) {
+        var stateMachine = getStateMachine(stack);
+        if (stateMachine == null) {
+            return;
+        }
+        stateMachine.update();
+    }
+
+    /**
      * 应用状态机的世界摄像机动画，暂时只用于玩家
      */
     public void applyLevelCameraAnimation(ViewportEvent.ComputeCameraAngles event, ItemStack stack, LocalPlayer player) {

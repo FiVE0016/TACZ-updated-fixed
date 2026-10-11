@@ -895,6 +895,11 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
             applyPositioningTransform(transformType, gunIndex.getTransform().getScale(), gunModel, poseStack);
             // 应用 display 数据中的缩放
             applyScaleTransform(transformType, gunIndex.getTransform().getScale(), poseStack);
+            // 【第三人称 / 物品展示也要"开火瞬间隐藏消耗弹"】
+            // 第一人称的隐藏挂在 renderFirstPerson 上，这条路径不经过它，
+            // 否则 RPG 的外置弹头打出去后仍会挂在手中模型上（本方法用的是主模型；
+            // 远处的 LOD 模型本身没有这些细节骨骼，无需处理）。
+            com.tacz.guns.client.gameplay.ConsumedRoundHider.applyTo(gunModel, gunIndex);
             // 渲染枪械模型
             RenderType renderType = RenderTypes.entityCutout(gunTexture);
             gunModel.submit(poseStack, stack, transformType, collector, renderType,

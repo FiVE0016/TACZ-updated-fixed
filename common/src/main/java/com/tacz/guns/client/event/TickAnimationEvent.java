@@ -60,7 +60,10 @@ public class TickAnimationEvent {
             if (renderer.needReInit(mainHandItem)) {
                 renderer.tryInit(mainHandItem, player, event.renderTickTime);
             }
-            renderer.visualUpdate(mainHandItem);
+            // 【第三人称也要写动画进模型】原先这里走 visualUpdate（仅状态 + 音效），
+            // 导致第三人称的枪完全静止：不播开火/换弹动画，外置弹头打出去也不消失。
+            // 改走 updateAnimation 后与第一人称对称；调用频率不变（每帧一次）。
+            renderer.updateAnimation(mainHandItem);
         }
     }
 }
