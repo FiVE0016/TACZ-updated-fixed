@@ -164,9 +164,22 @@ public enum ClientAssetsManager {
         return bedrockAnimation.getData(id);
     }
 
+    /**
+     * 取 Lua 状态机脚本。
+     *
+     * <p>走 {@link ScriptManager#getScriptOrLoad(Identifier)}：先查重载期建好的表，
+     * 查不到再按需从资源管理器读盘编译。这样「内容包引用的状态机位于重载期扫描没覆盖到的
+     * 命名空间」（例如枪包里除主命名空间外的第二个命名空间）也能拿到脚本，
+     * 而不是让整件物品的 display 判失败。</p>
+     */
     @Nullable
     public LuaTable getScript(Identifier id) {
-        return scriptManager.getScript(id);
+        return scriptManager.getScriptOrLoad(id);
+    }
+
+    /** 诊断用：当前已加载的脚本模块名快照。 */
+    public Set<String> getLoadedScriptModuleNames() {
+        return scriptManager.getLoadedModuleNames();
     }
 
     @Nullable

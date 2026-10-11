@@ -7,7 +7,6 @@ import com.google.gson.annotations.SerializedName;
 import com.tacz.guns.api.client.animation.AnimationController;
 import com.tacz.guns.api.client.animation.Animations;
 import com.tacz.guns.api.client.animation.statemachine.LuaAnimationStateMachine;
-import com.tacz.guns.api.client.animation.statemachine.LuaStateMachineFactory;
 import com.tacz.guns.client.resource.ClientAssetsManager;
 import com.tacz.guns.client.resource.pojo.display.block.BlockTransformParser;
 import com.tacz.guns.client.resource.pojo.model.BedrockModelPOJO;
@@ -64,7 +63,8 @@ import java.util.Objects;
 public class MeleeDisplayInstance implements ICustomSoundSupplier {
     private Identifier id;
     private CustomBedrockModel model;
-    private LuaAnimationStateMachine<BaseAnimationStateContext> stateMachine;
+    /** 延迟解析：重载期脚本表可能还没填好，见 {@link LazyStateMachine}。 */
+    private LazyStateMachine<BaseAnimationStateContext> stateMachine;
     private Identifier texture;
     @Nullable
     private Identifier slotTexture;
@@ -84,8 +84,13 @@ public class MeleeDisplayInstance implements ICustomSoundSupplier {
         return model;
     }
 
+    /**
+     * @return 该近战物品的 Lua 状态机；脚本缺失时为 {@code null}
+     *         （此时物品仍可正常渲染，只是不播 Lua 动画）。
+     */
+    @Nullable
     public LuaAnimationStateMachine<BaseAnimationStateContext> getStateMachine() {
-        return stateMachine;
+        return stateMachine == null ? null : stateMachine.get();
     }
 
     public Identifier getTexture() {
@@ -139,13 +144,10 @@ public class MeleeDisplayInstance implements ICustomSoundSupplier {
         Preconditions.checkArgument(animation != null, "no corresponding animation found for " + pojo.animationLocation);
         AnimationController controller = Animations.createControllerFromBedrock(animation, display.model);
 
-        var script = ClientAssetsManager.INSTANCE.getScript(pojo.stateMachineLocation);
-        Preconditions.checkArgument(script != null, "no corresponding state machine found for " + pojo.stateMachineLocation);
-
-        display.stateMachine = new LuaStateMachineFactory<BaseAnimationStateContext>()
-                .setController(controller)
-                .setLuaScripts(script)
-                .build();
+        // 状态机改为首帧渲染时再解析 + 内置兜底，见 LazyStateMachine。
+        display.stateMachine = new LazyStateMachine<>(pojo.stateMachineLocation,
+                Identifier.fromNamespaceAndPath("lrtactical", "default_melee_state_machine"),
+                controller, id.toString());
 
         display.texture = DisplayPaths.toTexturePath(pojo.textureLocation);
         display.slotTexture = DisplayPaths.toTexturePath(pojo.slotTextureLocation);
