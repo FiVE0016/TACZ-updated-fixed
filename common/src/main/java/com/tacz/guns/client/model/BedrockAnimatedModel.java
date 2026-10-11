@@ -141,7 +141,11 @@ public class BedrockAnimatedModel extends BedrockModel implements AnimationListe
         if (pojo.getGeometryModelNew().getBones() == null) {
             return;
         }
+        if (realBoneNames == null) {
+            realBoneNames = new java.util.HashSet<>();
+        }
         for (BonesItem bones : pojo.getGeometryModelNew().getBones()) {
+            realBoneNames.add(bones.getName());
             // 将 FunctionalBedrockPart 先塞入 modelMap 中，以支持 functionalRender 操作
             FunctionalBedrockPart bedrockPart = new FunctionalBedrockPart(null, bones.getName());
             modelMap.putIfAbsent(bones.getName(), new ModelRendererWrapper(bedrockPart));
@@ -156,7 +160,11 @@ public class BedrockAnimatedModel extends BedrockModel implements AnimationListe
         if (pojo.getGeometryModelLegacy().getBones() == null) {
             return;
         }
+        if (realBoneNames == null) {
+            realBoneNames = new java.util.HashSet<>();
+        }
         for (BonesItem bones : pojo.getGeometryModelLegacy().getBones()) {
+            realBoneNames.add(bones.getName());
             // 将 FunctionalBedrockPart 先塞入 modelMap 中，以支持 functionalRender 操作
             FunctionalBedrockPart bedrockPart = new FunctionalBedrockPart(null, bones.getName());
             modelMap.putIfAbsent(bones.getName(), new ModelRendererWrapper(bedrockPart));

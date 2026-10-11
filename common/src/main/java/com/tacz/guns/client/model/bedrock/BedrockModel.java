@@ -27,6 +27,23 @@ public class BedrockModel {
      */
     protected final HashMap<String, BonesItem> indexBones = new HashMap<>();
     /**
+     * 模型 JSON 里<b>真实存在</b>的骨骼名。
+     *
+     * <p>刻意声明在父类：{@code loadNewModel()} 是在父类构造体里被调用的（子类重写了它），
+     * 若把它声明在子类 {@code BedrockAnimatedModel} 中，那一刻子类字段还没初始化，
+     * 会直接 NPE 把资源重载炸掉（黑屏）。声明在这里，字段初始化早于父类构造体，安全。</p>
+     *
+     * <p>用途：{@code setFunctionalRenderer} 会给<b>不存在</b>的节点造占位对象
+     * （例如没有 {@code muzzle_flash} 的 m320 / rpg7），所以「取到的路径非 null」
+     * 并不代表模型真有这个节点。</p>
+     */
+    protected java.util.Set<String> realBoneNames = new java.util.HashSet<>();
+
+    /** @return 模型 JSON 里是否真的声明了这个骨骼。 */
+    public boolean hasRealBone(String name) {
+        return realBoneNames != null && realBoneNames.contains(name);
+    }
+    /**
      * 哪些模型需要渲染。加载进父骨骼的子骨骼是不需要渲染的
      */
     protected final List<BedrockPart> shouldRender = new LinkedList<>();
@@ -387,6 +404,12 @@ public class BedrockModel {
         delegateRenderers = new ArrayList<>();
     }
     public void submit(PoseStack matrixStack, ItemDisplayContext transformType, SubmitNodeCollector collector, RenderType renderType, int light, int overlay) { submit(matrixStack, transformType, collector, renderType, light, overlay, 1.0F, 1.0F, 1.0F, 1.0F); }
+
+    /** @return 指定骨骼的渲染包装器；不存在返回 null（供"开火瞬间隐藏消耗弹"使用）。 */
+    @Nullable
+    public ModelRendererWrapper getBoneWrapper(String name) {
+        return modelMap.get(name);
+    }
 
     protected List<BedrockPart> getPath(@Nullable ModelRendererWrapper rendererWrapper) {
         if (rendererWrapper == null) {
