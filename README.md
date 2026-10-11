@@ -7,24 +7,75 @@
 
 ---
 
-## 代码从哪来
+## 这个版本能做什么
 
-```
-MCModderAnchor/TACZ（官方，仅 1.20.1）
-  └─ Sh1roCu/TACZ-Refabricated（社区 Fabric 移植）
-       └─ q14433686-arch/TaCZ_Refabricated_Unofficial（Fabric 26.x 线）
-            └─ fmpapierz/TACZ-updated（母本，四加载器，2026-09-20）
-                 └─ 本仓库：母本的 26.3 修订版
-```
+- **四加载器**：Fabric / Quilt / NeoForge / Forge（Forge 实验性，默认不构建）
+- **完整的枪械玩法**：开枪、换弹、开镜、变倍、检视、配件改装、枪包加载
+- **光影下的瞄具画中画（Scope PIP）可用**：镜内有画面、准星与目镜框正常
+- **与 Sodium / Iris / Voxy / Distant Horizons / Physics Mod 联动**，钩子走反射，没装就不做事
+- **枪包兼容性修复**：见下文「本仓库修了什么」
 
-**绝大部分 26.3 移植工作不是本仓库完成的。** 四加载器架构、`common` + 各加载器模块、
-renderpearl（26.3 的新 GPU 抽象）迁移、瞄具画中画链路的 API 重写、Sodium/Iris/Voxy 兼容钩子、
-以及 `docs/PORTING_NOTES_26.3.md` 里的移植笔记，都来自上游链条。
+---
 
-本仓库做的是**在母本之上继续加工**：用实机测试暴露问题、定位根因、修复并验证。
-逐条区分「母本自带 / 本仓库改动」的清单见 [HANDOFF.md](HANDOFF.md) 第 0 节。
+## 本仓库修了什么
 
-**请不要把本仓库称为「26.3 搬运版」，也不要向 TACZ、TaCZ Refabricated 或母本作者报告本仓库的问题。**
+逐条区分「母本自带 / 本仓库改动」的完整清单见 [HANDOFF.md](HANDOFF.md) 第 0 节。摘要：
+
+### 弹丸与枪口
+
+1. **弹丸从枪口出生（第一人称与第三人称一致）**
+   原实现里弹丸生成在**眼睛**位置，第一人称靠一层"起点锁枪口"的视觉补偿遮盖，
+   第三人称没有这层补偿，于是看着像从头上飞出来。现在改为客户端采样枪口偏移并随开火包上报，
+   服务端据此换算出生点，因此两种视角都对。
+2. **模型没有 `muzzle_flash` 骨骼时，按几何自动推算枪口**
+   默认枪包的 M320 / RPG7 等模型没有这个骨骼，原实现只能沿用上一把枪的偏移
+   （表现为弹丸从枪口上方飞出）。现在会扫描模型几何，取 -Z 方向最靠前一块的前端面作为枪口，
+   并按模型加载器的坐标规则换算——**不需要枪包作者做任何事**。
+3. **火箭筒 / 榴弹发射器的弹头开火瞬间消失**
+   原本要等射击动画放完、状态机切进"打空"状态才隐藏，于是弹丸已经飞出去、膛里还挂着一发。
+   现在从枪包自己的动画数据推导「打空后才该消失的骨骼」，开火瞬间提前应用该姿态，
+   状态机追上时数值一致（无跳变），换弹时照常恢复。换弹途中误触扳机不会触发。
+
+### 操作与状态
+
+4. **按住趴下时松开按键立即起身**（26.3 的输入事件管线不会派发 RELEASE，原分支是死代码）
+5. **枪包 Lua 状态机按需加载**：解决重载期间只扫描到部分命名空间、导致某些枪械状态机加载失败的问题
+
+### 渲染（光影下的瞄具画中画）
+
+6. **光影下镜片全黑** —— 抓帧时机早于 Iris 的最终合成；已修复（见下文「光影下的画中画」）
+7. **光影下准星消失 / 目镜框被盖** —— 合成排在手持渲染之后；现已后置重画
+8. **无光影下变倍镜镜片不跟随** —— 旗标误删回归；已修复
+9. **Distant Horizons 远景不随镜内倍率缩放** —— 新增 DH 投影同步（原有仅 Voxy 兼容）
+10. **开镜 / 收镜瞬间视野抽动（高倍镜）** —— FOV 抑制的一帧延迟；已修复
+
+### 安全与工程
+
+11. **移除自带 LuaJ 中保留的危险类**（进程 / `io.popen` / `os.execute` / 反射与字节码编译），并有 CI 守卫
+12. NeoForge 版本钉扎过旧导致崩溃 —— 已升级并声明版本范围（过旧版本会被主动拒绝）
+
+---
+
+## 安装（玩家向）
+
+1. 安装对应加载器（见下方「环境要求」）；
+2. 把 `tacz-<加载器>-<版本>.jar` 放进 `.minecraft/mods/`；
+3. **Fabric / Quilt 还需要 Fabric API**（NeoForge / Forge 不需要）；
+4. 枪包放到 `.minecraft/tacz/`，每个包根目录必须有 `gunpack.meta.json`；
+5. 启动游戏即可。配置文件在 `config/tacz-*.toml`，游戏内可用 `/tacz config` 调整。
+
+---
+
+## 环境要求
+
+| 加载器 | 需要 |
+|---|---|
+| Fabric | Fabric Loader 0.19.5+ 与 Fabric API 0.160.7+26.3 |
+| Quilt | Quilt Loader 0.31.0-beta.4+ 与 Fabric API 0.160.7+26.3 |
+| NeoForge | **26.3.0.51-beta 或更新的 26.3 beta**（更旧的会崩溃，jar 已声明版本范围主动拒绝） |
+| Forge | Forge 26.3-66.0.2（默认不构建，见「构建」） |
+
+所有加载器都需要 **Java 25**。
 
 ---
 
@@ -32,27 +83,10 @@ renderpearl（26.3 的新 GPU 抽象）迁移、瞄具画中画链路的 API 重
 
 | 项 | 状态 |
 |---|---|
-| 四种加载器（Fabric / Quilt / NeoForge / Forge）构建 | ✅ 通过，有 CI（`.github/workflows/build.yml`） |
-| Fabric 实机验证 | ✅ 由仓库所有者长期实测：开枪、换弹、开镜、光影开/关、变倍、远景 LOD、开镜手感 |
+| 四种加载器构建 | ✅ 通过，有 CI（`.github/workflows/build.yml`） |
+| Fabric 实机验证 | ✅ 由仓库所有者长期实测：开枪、换弹、开镜、光影开/关、变倍、远景 LOD、开镜手感、枪口与弹头 |
 | 光影下的瞄具画中画 | ✅ 已修复并实测（25 倍镜：镜内有画面、准星与目镜框正常） |
 | NeoForge / Quilt / Forge 运行 | 编译与 CI 通过；实机运行需要对应环境再次验证 |
-
-**已修复的问题**（都在实机上游玩中暴露）：
-
-1. **光影下镜片全黑** —— 抓帧时机早于 Iris 的最终合成；现已修复（见下方"光影下画中画"）。
-2. **光影下准星消失 / 目镜框被盖** —— 合成排在手持渲染之后；现已后置重画。
-3. **无光影下变倍镜（如 5x→25x）镜片不跟随** —— 旗标误删回归；已修复。
-4. **Distant Horizons 远景不随镜内倍率缩放** —— 新增 DH 投影同步（原仓库只有 Voxy 兼容）。
-5. **开镜 / 收镜瞬间视野抽动（高倍镜）** —— FOV 抑制的一帧延迟；已修复。
-6. NeoForge 版本钉扎过旧会导致崩溃 —— 已升级并声明版本范围。
-7. 自带 LuaJ 保留的危险类（进程 / `io.popen` / `os.execute` / 反射）—— 已移除并有 CI 守卫。
-
-**未修复 / 已知限制**：
-
-- 日志里的 `Hull-fill: could not read back the projection UBO` 无害，会回退到逐立方体描摹。
-- Forge 支持是实验性的，默认不构建（`forge_enabled=false`），未实机验证。
-- NeoForge / Quilt 的实机运行仍需重新验证。
-- 枪包兼容与 Arcana 的限制见下文"枪包"一节。
 
 ---
 
@@ -60,7 +94,7 @@ renderpearl（26.3 的新 GPU 抽象）迁移、瞄具画中画链路的 API 重
 
 这是本仓库改动最集中的地方，值得单独说明。
 
-TACZ 的"镜内画中画"默认关闭；开启路径：
+TACZ 的「镜内画中画」默认关闭；开启路径：
 
 ```toml
 # config/tacz-client.toml
@@ -88,48 +122,15 @@ ScopePipRerender = true            # 二次渲染模式（镜内画质最好，�
 
 ---
 
-## 环境要求
-
-| 加载器 | 需要 |
-|---|---|
-| Fabric | Fabric Loader 0.19.5+ 与 Fabric API 0.160.7+26.3 |
-| Quilt | Quilt Loader 0.31.0-beta.4+ 与 Fabric API 0.160.7+26.3 |
-| NeoForge | **26.3.0.51-beta 或更新的 26.3 beta**（更旧的会崩溃，jar 已声明版本范围主动拒绝） |
-| Forge | Forge 26.3-66.0.2（默认不构建，见"构建"） |
-
-所有加载器都需要 **Java 25**。
-
----
-
-## 构建
-
-```bash
-./gradlew build          # 全部模块
-./gradlew :fabric:build  # 只出 Fabric，快很多
-```
-
-产物在 `build/libs/`（`fabric/build/libs/` 等模块目录里）。各模块的 `-slim` jar 不含自带依赖库。
-
-开发运行：`./gradlew :fabric:runClient`（`:quilt:` / `:neoforge:` / `:forge:` 同理）。
-
-Forge 包默认不构建：`gradle.properties` 里的 `forge_enabled=false`；打开它并联网构建即可出包。
-
----
-
-## 项目结构
-
-- `common/` —— 全部玩法、网络、资源与渲染代码，只针对原生 Minecraft 编译，
-  不允许 import 加载器 API（`:common:checkLoaderNeutral` 强制检查）。
-- `fabric/`、`quilt/`、`neoforge/`、`forge/` —— 入口点与平台服务，经 `ServiceLoader` 接缝触达。
-
----
-
 ## 配置
 
 - `config/tacz-common.toml`、`config/tacz-client.toml`、`config/tacz-pre.toml`
 - `<世界>/serverconfig/tacz-server.toml`（每世界一份）
 
 游戏内：`/tacz config`；装了 Cloth Config 时还有图形配置界面。
+
+**诊断日志**：本仓库的排障日志统一带 `[TACZDBG]` 前缀。
+不需要时用启动参数 `-Dtacz.debug=false` 关闭；需要排查枪口 / 趴下等问题时再打开。
 
 ### 性能提示（镜内画中画）
 
@@ -157,9 +158,67 @@ Player Animation Library、Carry On、Zoomify、Punchy 等（见各加载器可�
 
 - 现代布局枪包放 `.minecraft/tacz/`，包根必须有 `gunpack.meta.json`。
 - 旧布局放 `tacz_backup/` 后用客户端命令转换；转换器不保证修复所有差异，请保留备份。
+- **枪包作者无需为本仓库的修复做任何改动**：枪口出生点、弹头隐藏都从枪包自身数据推导
+  （自带 `muzzle_flash` 骨骼的枪用它自己的骨骼；没有的按几何推算；弹头隐藏按动画里
+  「打空状态首个关键帧缩放为 0」的骨骼判定）。
 - 本仓库**不提供 Arcana**，也不实现其 API；明确依赖 Arcana 的内容不受支持。
 - 枪包 Lua 脚本运行在受限解释器里（无 `io` / `os` / `luajava`），
   自带 LuaJ 也已移除进程、`io.popen`、`os.execute`、反射与字节码编译相关类。
+
+---
+
+## 已知限制
+
+- 日志里的 `Hull-fill: could not read back the projection UBO` 无害，会回退到逐立方体描摹。
+- Forge 支持是实验性的，默认不构建（`forge_enabled=false`），未实机验证。
+- NeoForge / Quilt 的实机运行仍需重新验证。
+- **枪口几何推算的两个边界**：假定模型前方为 -Z（默认枪包实测约定），若某枪包模型朝向相反、
+  或最靠前的几何并非枪管（如刺刀、两脚架），推算位置会有偏差；模型完全没有几何时退回近似偏移。
+- 配件（消音器 / 加长枪管）改变枪口位置时，骨骼不会随之移动，枪口会略短——
+  这是上游既有的限制，第一人称曳光弹同样如此。
+
+---
+
+## 构建
+
+```bash
+./gradlew build          # 全部模块
+./gradlew :fabric:build  # 只出 Fabric，快很多
+```
+
+产物在 `build/libs/`（`fabric/build/libs/` 等模块目录里）。各模块的 `-slim` jar 不含自带依赖库。
+
+开发运行：`./gradlew :fabric:runClient`（`:quilt:` / `:neoforge:` / `:forge:` 同理）。
+
+Forge 包默认不构建：`gradle.properties` 里的 `forge_enabled=false`；打开它并联网构建即可出包。
+
+---
+
+## 项目结构
+
+- `common/` —— 全部玩法、网络、资源与渲染代码，只针对原生 Minecraft 编译，
+  不允许 import 加载器 API（`:common:checkLoaderNeutral` 强制检查）。
+- `fabric/`、`quilt/`、`neoforge/`、`forge/` —— 入口点与平台服务，经 `ServiceLoader` 接缝触达。
+
+---
+
+## 代码从哪来
+
+```
+MCModderAnchor/TACZ（官方，仅 1.20.1）
+  └─ Sh1roCu/TACZ-Refabricated（社区 Fabric 移植）
+       └─ q14433686-arch/TaCZ_Refabricated_Unofficial（Fabric 26.x 线）
+            └─ fmpapierz/TACZ-updated（母本，四加载器，2026-09-20）
+                 └─ 本仓库：母本的 26.3 修订版
+```
+
+**绝大部分 26.3 移植工作不是本仓库完成的。** 四加载器架构、`common` + 各加载器模块、
+renderpearl（26.3 的新 GPU 抽象）迁移、瞄具画中画链路的 API 重写、Sodium/Iris/Voxy 兼容钩子、
+以及 `docs/PORTING_NOTES_26.3.md` 里的移植笔记，都来自上游链条。
+
+本仓库做的是**在母本之上继续加工**：用实机测试暴露问题、定位根因、修复并验证。
+
+**请不要把本仓库称为「26.3 搬运版」，也不要向 TACZ、TaCZ Refabricated 或母本作者报告本仓库的问题。**
 
 ---
 
