@@ -248,6 +248,31 @@ public class ModernKineticGunScriptAPI {
             return null;
         }
         Vec3 target = eye.add(vec);
+        // 【贴脸收口】眼睛 → 枪口这条线上如果先命中了实体，就不用枪口出生：
+        // 出生点前移约 1.2 格，贴脸（0.8 格内）时弹丸会直接生成在目标身后，表现为"打不中"。
+        // 这里做一次实体扫描，命中就退回眼睛出生，代价是每次开枪一次 AABB 查询，可忽略。
+        net.minecraft.world.phys.AABB sweep = new net.minecraft.world.phys.AABB(eye, target).inflate(0.3);
+        double entityDist = Double.MAX_VALUE;
+        net.minecraft.world.entity.Entity entityHit = null;
+        for (net.minecraft.world.entity.Entity candidate : shooter.level().getEntities(shooter, sweep)) {
+            if (candidate == shooter || !candidate.isAlive() || candidate.isSpectator()
+                    || candidate.isPassenger() || candidate.isVehicle()) {
+                continue;
+            }
+            java.util.Optional<Vec3> clip = candidate.getBoundingBox().inflate(0.3).clip(eye, target);
+            if (clip.isPresent()) {
+                double d = clip.get().distanceTo(eye);
+                if (d < entityDist) {
+                    entityDist = d;
+                    entityHit = candidate;
+                }
+            }
+        }
+        if (entityHit != null) {
+            com.tacz.guns.util.TaczDebug.log("resolveMuzzleOrigin: 眼睛到枪口之间有实体({})，距离 {} -> 退回眼睛出生",
+                    entityHit.getName().getString(), String.format("%.3f", entityDist));
+            return null;
+        }
         HitResult hit = shooter.level().clip(new ClipContext(eye, target,
                 ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, shooter));
         if (hit.getType() != HitResult.Type.MISS) {

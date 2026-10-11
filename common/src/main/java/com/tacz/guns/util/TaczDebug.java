@@ -13,7 +13,7 @@ import com.tacz.guns.GunMod;
  * <p>关掉的办法：加启动参数 {@code -Dtacz.debug=false}。</p>
  */
 public final class TaczDebug {
-    private static final boolean ENABLED = !"false".equalsIgnoreCase(System.getProperty("tacz.debug", "true"));
+    private static final boolean ENABLED = "true".equalsIgnoreCase(System.getProperty("tacz.debug", "false"));
 
     private TaczDebug() {
     }

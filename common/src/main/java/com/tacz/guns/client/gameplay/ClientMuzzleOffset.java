@@ -38,12 +38,15 @@ public final class ClientMuzzleOffset {
     /** 采样当前枪口偏移；非第一人称或没有枪口节点时置为 null。只能在主线程调用。 */
     public static void capture() {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null || !minecraft.options.getCameraType().isFirstPerson()) {
-            com.tacz.guns.util.TaczDebug.log("ClientMuzzleOffset.capture: 无玩家或非第一人称 -> null (cameraType={})",
-                    minecraft.options.getCameraType());
+        if (minecraft.player == null) {
+            com.tacz.guns.util.TaczDebug.log("ClientMuzzleOffset.capture: 无玩家 -> null");
             worldOffset = null;
             return;
         }
+        // 【第三人称也生效】原先这里在"非第一人称"时直接返回 null，于是第三人称永远退回眼睛出生。
+        // 实际上第三人称可以直接复用最近一次第一人称采样到的偏移：同一把枪、同一姿态下
+        // "枪口相对眼睛"的位置不变；换枪后所有权校验（gunId 比对）会自动让它失效。
+        // 若玩家从未在第一人称渲染过这把枪，则本来就没有可用值，退回眼睛出生，安全。
         // 必须按「当前手持的这把枪」取偏移：muzzleRenderOffset 是全局静态量，
         // 换枪后它还是上一把枪的值（默认包的 m320/rpg7 模型没有 muzzle_flash 节点，
         // 更会一直沿用上一把枪的偏移 —— 表现为榴弹从枪口上方飞出去）。
@@ -58,7 +61,18 @@ public final class ClientMuzzleOffset {
         }
         // 注意：JOML 的 rotate() 是原地修改 —— 先留一份副本，否则日志里 view 与 world 会打印成同一个值
         Vector3f viewCopy = new Vector3f(viewSpace);
-        worldOffset = viewSpace.rotate(minecraft.gameRenderer.mainCamera().rotation());
+        // 【用射手自身的视线朝向换算，而不是相机朝向】
+        // 正面第三人称（F5 按两次）时相机是"回头看玩家"的，用相机朝向会把偏移反向 180°；
+        // 第一人称与背后第三人称下相机恰好等于玩家朝向，所以用玩家朝向即可三种情形一致。
+        // 26.3 的 Camera#rotation 本身就是 rotationYXZ(PI - yRot*DEG, -xRot*DEG, 0)，
+        // 这里用同一公式从玩家朝向构造，等价于原行为。
+        float yawDeg = minecraft.player.getViewYRot(1.0F);
+        float pitchDeg = minecraft.player.getViewXRot(1.0F);
+        org.joml.Quaternionf rotation = new org.joml.Quaternionf().rotationYXZ(
+                (float) Math.PI - yawDeg * ((float) Math.PI / 180.0F),
+                -pitchDeg * ((float) Math.PI / 180.0F),
+                0.0F);
+        worldOffset = viewSpace.rotate(rotation);
         com.tacz.guns.util.TaczDebug.log("ClientMuzzleOffset.capture: 枪={} view=({}, {}, {}) -> world=({}, {}, {}) len={}",
                 heldGunId,
                 String.format("%.3f", viewCopy.x), String.format("%.3f", viewCopy.y), String.format("%.3f", viewCopy.z),
