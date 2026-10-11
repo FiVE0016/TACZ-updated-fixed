@@ -25,7 +25,15 @@ import java.util.stream.Collectors;
  */
 public class SyncedEntityData {
     private static final Marker SYNCED_ENTITY_DATA_MARKER = MarkerFactory.getMarker("SYNCED_ENTITY_DATA_TAC_COPY");
-    private static SyncedEntityData INSTANCE;
+    /**
+     * 常量式单例。<b>不要改回懒初始化</b>：启动期客户端主线程、集成服务端线程与
+     * 网络解码线程都可能并发首次调用 {@code instance()}，无 volatile/synchronized
+     * 的懒初始化会造出两个实例——同步键注册进 A，而键映射包从 B（空表）构造。
+     * 客户端收到空映射后会清掉本来正确的网络 id 表，随后任何
+     * {@code s2c_update_entity_data} 都会以 "Synced key does not exist for id"
+     * 解码失败并踢出玩家（实机 1.26.3 撞到过）。
+     */
+    private static final SyncedEntityData INSTANCE = new SyncedEntityData();
 
     private final Set<SyncedClassKey<?>> registeredClassKeys = new HashSet<>();
     private final Object2ObjectMap<Identifier, SyncedClassKey<?>> idToClassKey = new Object2ObjectOpenHashMap<>();
@@ -36,7 +44,8 @@ public class SyncedEntityData {
     private final Set<SyncedDataKey<?, ?>> registeredDataKeys = new HashSet<>();
     private final Reference2ObjectMap<SyncedClassKey<?>, HashMap<Identifier, SyncedDataKey<?, ?>>> classToKeys = new Reference2ObjectOpenHashMap<>();
     private final Reference2IntMap<SyncedDataKey<?, ?>> internalIds = new Reference2IntOpenHashMap<>();
-    private final Int2ReferenceMap<SyncedDataKey<?, ?>> syncedIdToKey = new Int2ReferenceOpenHashMap<>();
+    /** 非 final：{@link #updateMappings} 用整表替换来避免清表窗口（见该方法注释）。 */
+    private Int2ReferenceMap<SyncedDataKey<?, ?>> syncedIdToKey = new Int2ReferenceOpenHashMap<>();
 
     private final AtomicInteger nextIdTracker = new AtomicInteger();
     private final List<Entity> dirtyEntities = new ArrayList<>();
@@ -46,9 +55,6 @@ public class SyncedEntityData {
     }
 
     public static SyncedEntityData instance() {
-        if (INSTANCE == null) {
-            INSTANCE = new SyncedEntityData();
-        }
         return INSTANCE;
     }
 
@@ -124,6 +130,12 @@ public class SyncedEntityData {
     }
 
     public int getInternalId(SyncedDataKey<?, ?> key) {
+        if (!this.internalIds.containsKey(key)) {
+            // 未注册的键在这里原本静默返回 0，会把网络流写歪成"另一个键的值"。
+            GunMod.LOGGER.error(SYNCED_ENTITY_DATA_MARKER,
+                    "Synced data key {} for {} was never registered - refusing to write a bogus network id",
+                    key.id(), key.classKey().id());
+        }
         return this.internalIds.getInt(key);
     }
 
@@ -204,7 +216,10 @@ public class SyncedEntityData {
     }
 
     public boolean updateMappings(Map<Identifier, List<Pair<Identifier, Integer>>> keyMap) {
-        this.syncedIdToKey.clear();
+        // 先建新表、最后整表替换：旧实现是 clear() 之后逐条 put，网络解码线程若在
+        // 这个窗口里解包，会读到空表/半表并把本来有效的 id 判为未知，直接以
+        // DecoderException 踢人（单人集成服里两个线程共享同一实例，窗口真实存在）。
+        Int2ReferenceMap<SyncedDataKey<?, ?>> rebuilt = new Int2ReferenceOpenHashMap<>();
 
         List<Pair<Identifier, Identifier>> missingKeys = new ArrayList<>();
         keyMap.forEach((classId, list) -> {
@@ -221,9 +236,11 @@ public class SyncedEntityData {
                     missingKeys.add(Pair.of(classId, pair.getLeft()));
                     return;
                 }
-                this.syncedIdToKey.put((int) pair.getRight(), syncedDataKey);
+                rebuilt.put((int) pair.getRight(), syncedDataKey);
             });
         });
+
+        this.syncedIdToKey = rebuilt;
 
         if (!missingKeys.isEmpty()) {
             String keys = missingKeys.stream().map(Object::toString).collect(Collectors.joining(",", "[", "]"));

@@ -43,6 +43,11 @@ public class ServerMessageSyncedEntityDataMapping implements CustomPacketPayload
         for (SyncedDataKey<?, ?> key : data.getKeys()) {
             this.keyMap.computeIfAbsent(key.classKey().id(), k -> new ArrayList<>()).add(Pair.of(key.id(), data.getInternalId(key)));
         }
+        if (this.keyMap.isEmpty()) {
+            // 空映射不会触发客户端的 unknown-keys 检查，却会把客户端的网络 id 表清空，
+            // 之后每个 s2c_update_entity_data 都会解码失败并踢人 —— 必须显式报警。
+            GunMod.LOGGER.error(MARKER, "Building an EMPTY synced data key mapping: no keys registered on this side");
+        }
     }
 
     public ServerMessageSyncedEntityDataMapping(FriendlyByteBuf buf) {
