@@ -20,12 +20,16 @@ public class LivingEntityCrawl {
     }
 
     public void crawl(boolean isCrawl) {
+        com.tacz.guns.util.TaczDebug.log("LivingEntityCrawl.crawl({}) (服务端)", isCrawl);
         data.isCrawling = isCrawl;
     }
 
     public void tickCrawling() {
         // currentGunItem 如果为 null，则取消趴下状态
         if (data.currentGunItem == null || !(data.currentGunItem.get().getItem() instanceof IGun iGun)) {
+            if (data.isCrawling) {
+                com.tacz.guns.util.TaczDebug.log("LivingEntityCrawl.tickCrawling: 服务端自动取消趴下");
+            }
             data.isCrawling = false;
             this.setCrawlPose();
             return;
@@ -33,6 +37,9 @@ public class LivingEntityCrawl {
         ItemStack currentGunItem = data.currentGunItem.get();
         // 不允许趴下的武器，则取消趴下状态
         if (!iGun.isCanCrawl(currentGunItem)) {
+            if (data.isCrawling) {
+                com.tacz.guns.util.TaczDebug.log("LivingEntityCrawl.tickCrawling: 服务端自动取消趴下");
+            }
             data.isCrawling = false;
             this.setCrawlPose();
             return;
@@ -40,12 +47,18 @@ public class LivingEntityCrawl {
         // 如果获取不到 gunIndex，则取消趴下状态
         Identifier gunId = iGun.getGunId(currentGunItem);
         if (TimelessAPI.getCommonGunIndex(gunId).isEmpty()) {
+            if (data.isCrawling) {
+                com.tacz.guns.util.TaczDebug.log("LivingEntityCrawl.tickCrawling: 服务端自动取消趴下");
+            }
             data.isCrawling = false;
             this.setCrawlPose();
             return;
         }
         // 如果是观察者模型、骑乘、跳跃、在游泳、不在地上，取消
         if (shooter.isSpectator() || shooter.isPassenger() || ((LivingEntityAccessor) shooter).tacz$isJumping() || shooter.isSwimming() || !shooter.onGround()) {
+            if (data.isCrawling) {
+                com.tacz.guns.util.TaczDebug.log("LivingEntityCrawl.tickCrawling: 服务端自动取消趴下");
+            }
             data.isCrawling = false;
             this.setCrawlPose();
             return;

@@ -37,6 +37,7 @@ public class ClientMessagePlayerCrawl implements CustomPacketPayload {
         if (!SyncConfig.ENABLE_CRAWL.get()) {
             return;
         }
+        com.tacz.guns.util.TaczDebug.log("服务端收到 ClientMessagePlayerCrawl: isCrawl={}", isCrawl);
         IGunOperator.fromLivingEntity(player).crawl(isCrawl);
     }
 }
