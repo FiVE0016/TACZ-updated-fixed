@@ -68,6 +68,15 @@ public class GunDisplayInstance {
 
     private String thirdPersonAnimation = "empty";
     private BedrockGunModel gunModel;
+
+    /**
+     * 【开火瞬间隐藏消耗弹】枪包自己在"打空状态"里隐藏的骨骼名（火箭弹头 / 枪榴弹 / 弩箭…）。
+     * 由 {@link com.tacz.guns.client.gameplay.ConsumedRoundHider#scan} 从该枪的动画数据推导。
+     */
+    private java.util.Set<String> consumedRoundBones = java.util.Set.of();
+
+    /** 该枪 shoot 片段的时长（秒），用于确定"提前隐藏"的时间窗。 */
+    private double shootClipLengthS = 0.0;
     private @Nullable Pair<BedrockGunModel, Identifier> lodModel;
 
     private LuaAnimationStateMachine<GunAnimationStateContext> animationStateMachine;
@@ -484,6 +493,11 @@ public class GunDisplayInstance {
             if (bedrockAnimationFile != null) {
                 // 用 bedrock 动画资源创建动画控制器
                 controller = Animations.createControllerFromBedrock(bedrockAnimationFile, gunModel);
+                // 【开火瞬间隐藏消耗弹】顺手从同一份动画数据里推导"打空后应当消失的骨骼"
+                com.tacz.guns.client.gameplay.ConsumedRoundHider.Result consumed =
+                        com.tacz.guns.client.gameplay.ConsumedRoundHider.scan(bedrockAnimationFile);
+                this.consumedRoundBones = consumed.bones();
+                this.shootClipLengthS = consumed.shootClipLengthS();
             } else if (gltfAnimations != null) {
                 // 用 gltf 动画资源创建动画控制器
                 controller = Animations.createControllerFromGltf(gltfAnimations, gunModel);
@@ -661,6 +675,16 @@ public class GunDisplayInstance {
                 throw new IllegalArgumentException("index number is error: " + key);
             }
         }
+    }
+
+    /** @return 枪包声明"打空后应当消失"的骨骼名（可能为空集）。 */
+    public java.util.Set<String> getConsumedRoundBones() {
+        return consumedRoundBones;
+    }
+
+    /** @return 该枪 shoot 片段的时长（秒）；未知时为 0。 */
+    public double getShootClipLengthS() {
+        return shootClipLengthS;
     }
 
     public @Nullable BedrockGunModel getGunModel() {

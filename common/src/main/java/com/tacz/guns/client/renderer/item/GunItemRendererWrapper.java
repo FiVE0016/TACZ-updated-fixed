@@ -383,10 +383,14 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
             // 之后的视图坐标也逐帧记下：若 viewRoot 与 viewMuzzle 同偏同量，偏转来自定位/延滞链；
             // 若 viewRoot 不偏而 viewMuzzle 偏，则来自骨骼动画层（枪口骨骼路径）。
             debugRecoilGunRoot(poseStack.last().pose());
+            // 【开火瞬间隐藏消耗弹】状态机的动画已在本帧应用完毕、模型尚未提交 ——
+            // 正是强制清零"打空后才该消失"的骨骼的唯一正确时机
+            // （cleanAnimationTransform() 在本帧渲染结束后才会把缩放复位为 1）。
+            com.tacz.guns.client.gameplay.ConsumedRoundHider.applyTo(gunModel, display);
             gunModel.submit(poseStack, stack, ctx, collector, renderType,
                     display.getModelTexture(), light, OverlayTexture.NO_OVERLAY);
             // 缓存枪口位置，为第一人称曳光弹渲染作准备
-            cacheMuzzlePosition(poseStack, gunModel);
+            cacheMuzzlePosition(poseStack, gunModel, stack);
             // 【RecoilDebug 探针】第 27.5 轮：机瞄骨骼链视图坐标逐帧取证。
             // 已证根↔枪口链在开枪斜向帧冻结（±0.001），但用户目击「机瞄框偏离屏幕中线」——
             // 瞄具位于另一条骨骼链，若唯独它摆动，则动画写入层（AnimationRunner 通道）
@@ -403,11 +407,75 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
         });
     }
 
-    private static void cacheMuzzlePosition(PoseStack poseStack, BedrockGunModel gunModel) {
-        if (gunModel.getMuzzleFlashPosPath() != null) {
+    /**
+     * 模型里没有 {@code muzzle_flash} 节点时使用的<b>近似</b>枪口偏移（视图空间：右 +x / 上 +y / 前 -z）。
+     *
+     * <p>默认枪包的 m320 与 rpg7 就没有这个节点（110 个模型里 6 个缺，其中 4 个是 LOD）。
+     * 近似值取「前方 0.9 格、略低于视线」，只在这类模型上生效 —— 比退回眼睛出生强得多。</p>
+     */
+    private static final Vector3f DEFAULT_MUZZLE_OFFSET_NO_NODE = new Vector3f(0f, -0.45f, -0.9f);
+
+    /** 最近一次采集 {@link #muzzleRenderOffset} 时渲染的那把枪。 */
+    @Nullable
+    private static net.minecraft.resources.Identifier muzzleOffsetGunId;
+
+    /** 上一帧渲染的那把枪，其模型是否根本没有 muzzle_flash 节点。 */
+    private static boolean muzzleOffsetMissingNode;
+
+    /** 这次的枪口是不是"几何推算"出来的（模型没有 muzzle_flash 骨骼），仅用于诊断日志。 */
+    private static boolean muzzleOffsetFromGeometry;
+
+    /**
+     * 取「当前手持这把枪」的枪口偏移（视图空间）。
+     *
+     * <p>两道保护，都是为了 M320/RPG7 这类<b>模型没有枪口节点</b>的枪：</p>
+     * <ol>
+     *   <li>枪 id 不匹配（换枪后 offset 还是上一把枪的）→ 返回 null，让调用方退回眼睛出生；</li>
+     *   <li>模型没有枪口节点 → 返回 {@link #DEFAULT_MUZZLE_OFFSET_NO_NODE} 近似值，
+     *       而不是沿用上一把枪的陈旧偏移（那正是「榴弹从枪口上方飞出来」的原因：
+     *       上一把步枪的枪口节点比 M320 的管子高）。</li>
+     * </ol>
+     */
+    @Nullable
+    public static Vector3f getViewMuzzleOffsetFor(@Nullable net.minecraft.resources.Identifier heldGunId) {
+        if (heldGunId == null || !heldGunId.equals(muzzleOffsetGunId)) {
+            return null;
+        }
+        if (muzzleOffsetMissingNode) {
+            com.tacz.guns.util.TaczDebug.log("枪口: 枪={} 既没有 muzzle_flash 骨骼也没有可用几何 -> 使用近似偏移 view={}",
+                    heldGunId, DEFAULT_MUZZLE_OFFSET_NO_NODE);
+            return new Vector3f(DEFAULT_MUZZLE_OFFSET_NO_NODE);
+        }
+        if (muzzleOffsetFromGeometry) {
+            com.tacz.guns.util.TaczDebug.log("枪口: 枪={} 模型没有 muzzle_flash 骨骼 -> 用几何推算的枪口 view={}",
+                    heldGunId, muzzleRenderOffset);
+        }
+        if (muzzleRenderOffset.lengthSquared() < 1.0E-6f) {
+            return null;
+        }
+        return new Vector3f(muzzleRenderOffset);
+    }
+
+    private static void cacheMuzzlePosition(PoseStack poseStack, BedrockGunModel gunModel, ItemStack stack) {
+        // 枪口偏移是「某一帧、某一把枪」的产物：这里记下所有权，换枪后旧值就不能再用
+        muzzleOffsetGunId = stack.getItem() instanceof IGun gun ? gun.getGunId(stack) : null;
+        // 【几何自动推算枪口】优先用模型自带的 muzzle_flash 骨骼；模型没有这个骨骼时
+        // （默认包的 m320 / rpg7、以及社区枪包里的同类模型），改由 BedrockGunModel
+        // 从几何算出一个虚拟枪口 —— 于是不需要任何人工补骨骼，玩家装我们的移植版即生效。
+        var muzzlePath = gunModel.getEffectiveMuzzlePath();
+        if (muzzlePath == null) {
+            // 连几何都没有（模型里一个立方体都没有）→ 只能退回近似偏移
+            muzzleOffsetMissingNode = true;
+            muzzleOffsetFromGeometry = false;
+            muzzleRenderOffset.set(0f, 0f, 0f);
+            return;
+        }
+        muzzleOffsetMissingNode = false;
+        muzzleOffsetFromGeometry = gunModel.isMuzzleFromGeometry();
+        {
             // 计算出枪口相对于摄像机中心的坐标
             poseStack.pushPose();
-            for (BedrockPart bedrockPart : gunModel.getMuzzleFlashPosPath()) {
+            for (BedrockPart bedrockPart : muzzlePath) {
                 bedrockPart.translateAndRotateAndScale(poseStack);
             }
             Matrix4f pose = poseStack.last().pose();
@@ -455,8 +523,32 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
             double fovScale = Math.tan(itemRenderFov / 2 * Math.PI / 180) / Math.tan(levelRenderFov / 2 * Math.PI / 180);
             muzzleRenderOffset.set(viewX, viewY, (float) (viewZ * fovScale));
             debugMuzzleSpace(mx0, my0, mz0, viewX, viewY, viewZ, fovScale);
+            // 【枪口坐标系标定】几何推算的枪口同时算出"另一种挂法"的结果并打日志：
+            // 模型空间与渲染空间之间存在 Y 翻转与骨骼枢轴差值，靠推理容易再错一次，
+            // 索性让游戏自己把两种候选都报出来，按数据选正确的那一个。
+            if (com.tacz.guns.util.TaczDebug.enabled() && gunModel.isMuzzleFromGeometry()) {
+                List<BedrockPart> alt = gunModel.getAlternateMuzzlePath();
+                if (alt != null) {
+                    poseStack.pushPose();
+                    for (BedrockPart altPart : alt) {
+                        altPart.translateAndRotateAndScale(poseStack);
+                    }
+                    Matrix4f altPose = poseStack.last().pose();
+                    poseStack.popPose();
+                    float adx = altPose.m30() - handBasePoseEntry.m30();
+                    float ady = altPose.m31() - handBasePoseEntry.m31();
+                    float adz = altPose.m32() - handBasePoseEntry.m32();
+                    float avx = handBasePoseEntry.m00() * adx + handBasePoseEntry.m01() * ady + handBasePoseEntry.m02() * adz;
+                    float avy = handBasePoseEntry.m10() * adx + handBasePoseEntry.m11() * ady + handBasePoseEntry.m12() * adz;
+                    float avz = handBasePoseEntry.m20() * adx + handBasePoseEntry.m21() * ady + handBasePoseEntry.m22() * adz;
+                    com.tacz.guns.util.TaczDebug.log("枪口候选对比: 采用(挂几何所属骨骼) view=({}, {}, {}) | 备选(挂 root) view=({}, {}, {})",
+                            String.format("%.3f", viewX), String.format("%.3f", viewY), String.format("%.3f", viewZ),
+                            String.format("%.3f", avx), String.format("%.3f", avy), String.format("%.3f", avz));
+                }
+            }
         }
     }
+
 
     // —— 枪口空间诊断（配合 RenderConfig.TRACER_DEBUG / RECOIL_DEBUG；后者逐帧，仅供对照实证）——
     private static long debugMuzzleSpaceLastLog = 0L;

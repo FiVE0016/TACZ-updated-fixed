@@ -45,6 +45,16 @@ public class LivingEntityShoot {
         return shootInternal(pitch, yaw, timestamp, chargeProgress, true);
     }
 
+    /**
+     * 带客户端枪口偏移的版本：偏移先落到 {@link ShooterDataHolder}，
+     * 再由 {@code spawnProjectiles} 在生成弹丸时取用（含校验与射线收口）。
+     */
+    public ShootResult shoot(Supplier<Float> pitch, Supplier<Float> yaw, long timestamp, float chargeProgress,
+                             @org.jetbrains.annotations.Nullable org.joml.Vector3f muzzleOffset) {
+        data.clientMuzzleOffset = muzzleOffset;
+        return shootInternal(pitch, yaw, timestamp, chargeProgress, true);
+    }
+
     protected ShootResult shootInternal(Supplier<Float> pitch, Supplier<Float> yaw, long timestamp, float chargeProgress, boolean hasChargeContext) {
         if (data.currentGunItem == null) {
             return ShootResult.NOT_DRAW;

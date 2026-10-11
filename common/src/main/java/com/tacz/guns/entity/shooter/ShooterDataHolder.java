@@ -95,6 +95,15 @@ public class ShooterDataHolder {
      */
     public boolean isCrawling = false;
     /**
+     * 最近一次开火时客户端上报的枪口偏移（世界轴、相对眼睛）。
+     *
+     * <p>由 {@code LivingEntityShoot#shoot(..., muzzleOffset)} 写入、
+     * 由 {@code ModernKineticGunScriptAPI#spawnProjectiles} 读取。
+     * 连发期间复用同一个值：枪口相对眼睛的位置在这段时间里基本不变。</p>
+     */
+    @Nullable
+    public org.joml.Vector3f clientMuzzleOffset = null;
+    /**
      * 用于缓存 lua 脚本的数据
      */
     @Nullable

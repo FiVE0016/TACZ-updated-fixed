@@ -125,7 +125,12 @@ public class LocalPlayerShoot {
     }
 
     public ShootResult shoot() {
-        // 因为开火冷却检测用了特别定制的方法，所以不检查状态锁，而是手动检查是否换弹、切枪
+        // 【枪口出生点】在主线程采样枪口偏移；真正发包在 scheduler 线程上，
+        // 那时再读相机/渲染状态不安全，所以先存快照（见 ClientMuzzleOffset）。
+        ClientMuzzleOffset.capture();
+        // 【注意】"开火瞬间隐藏消耗弹"的标记**不能**放在这里：本方法开头就返回的分支很多
+        // （换弹中、冷却中、切枪中、奔跑中…），放在这里会导致"换弹时误触扳机"也把弹头藏起来
+        //（此时并没有真的发射）。正确位置在下面所有检查都通过之后。
         IGunOperator gunOperator = IGunOperator.fromLivingEntity(player);
         ItemStack mainHandItem = player.getMainHandItem();
         // 暂定为只有主手能开枪
@@ -174,6 +179,9 @@ public class LocalPlayerShoot {
         if (event.isCanceled()) {
             return ShootResult.FORGE_EVENT_CANCEL;
         }
+        // 【开火瞬间隐藏消耗弹】到这里说明本次开火真的会执行（换弹/冷却/奔跑等分支都已放行），
+        // 此时才让弹头立刻消失；换弹途中误触扳机不会走到这里。
+        ConsumedRoundHider.markFired();
         // 切换状态锁，不允许换弹、检视等行为进行。
         data.lockState(SHOOT_LOCKED_CONDITION);
         data.isShootRecorded = false;
@@ -312,7 +320,8 @@ public class LocalPlayerShoot {
             data.clientLastShootTimestamp = data.clientShootTimestamp;
             data.clientShootTimestamp = System.currentTimeMillis();
             // 发送开火的数据包，通知服务器
-            NetworkHandler.sendToServer(new ClientMessagePlayerShoot(data.clientShootTimestamp - data.clientBaseTimestamp, chargeProgress));
+            NetworkHandler.sendToServer(new ClientMessagePlayerShoot(data.clientShootTimestamp - data.clientBaseTimestamp,
+                    chargeProgress, ClientMuzzleOffset.get()));
         }
 
         // 已核实：本段运行在 ScheduledExecutorService 线程，而动画状态机、声音

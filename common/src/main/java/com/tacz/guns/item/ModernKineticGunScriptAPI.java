@@ -34,6 +34,10 @@ import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 import org.luaj.vm2.LuaError;
 import org.luaj.vm2.LuaFunction;
 import org.luaj.vm2.LuaTable;
@@ -193,6 +197,75 @@ public class ModernKineticGunScriptAPI {
         return true;
     }
 
+    /** 客户端上报的枪口偏移允许的最大长度（格）。实测第一人称模型枪口距眼睛约 1.2~1.3 格。 */
+    private static final double MAX_MUZZLE_OFFSET = 2.0;
+    /**
+     * 枪口偏移沿<b>视线方向</b>的最小前向分量（格）。
+     *
+     * <p>原先是「与视线夹角 ≤ 35°」的圆锥校验，实测把腰射的大型发射器（GL-28、M320）
+     * 全部拒掉了：它们的枪口节点比眼睛低约 0.74 格，夹角约 37°，于是退回眼睛出生 ——
+     * 表现就是「榴弹从眼睛里飞出来」。判定改成只看前向分量，既允许枪口明显低于视线
+     * （腰射本来就是这样），又能挡住「把枪口报在身后」这种离谱输入。</p>
+     */
+    private static final double MIN_MUZZLE_FORWARD = 0.1;
+    /** 射线收口时留出的余量（格），避免弹丸正好出生在方块表面里。 */
+    private static final double MUZZLE_CLIP_MARGIN = 0.05;
+
+    /**
+     * 把客户端上报的「枪口相对眼睛的世界轴偏移」解成一个可用的出生点。
+     *
+     * <p>三道防线，任一不过就直接返回 {@code null}（= 退回眼睛出生，与改动前一致）：</p>
+     * <ol>
+     *   <li><b>长度</b>截断到 {@link #MAX_MUZZLE_OFFSET}，避免客户端把枪口报到自己身后很远；</li>
+     *   <li><b>夹角</b>必须与视线方向在 {@link #MAX_MUZZLE_ANGLE_DEG} 以内 —— 枪口本来就该在正前方；</li>
+     *   <li><b>视线射线</b>：眼睛 → 目标点做一次方块碰撞检测，命中就把出生点收到命中点前
+     *       {@link #MUZZLE_CLIP_MARGIN} 格。没有这一步，贴着墙开枪时弹丸会出生在墙里
+     *       （表现是穿墙、或一出生就撞墙爆炸）。</li>
+     * </ol>
+     */
+    @Nullable
+    private Vec3 resolveMuzzleOrigin(LivingEntity shooter, @Nullable org.joml.Vector3f offset) {
+        if (offset == null) {
+            com.tacz.guns.util.TaczDebug.log("resolveMuzzleOrigin: 偏移为 null -> 退回眼睛出生");
+            return null;
+        }
+        Vec3 eye = shooter.getEyePosition();
+        Vec3 vec = new Vec3(offset.x(), offset.y(), offset.z());
+        double len = vec.length();
+        if (len < 1.0E-4) {
+            com.tacz.guns.util.TaczDebug.log("resolveMuzzleOrigin: 偏移长度过小({}) -> 退回眼睛出生", len);
+            return null;
+        }
+        if (len > MAX_MUZZLE_OFFSET) {
+            com.tacz.guns.util.TaczDebug.log("resolveMuzzleOrigin: 偏移长度 {} 超过上限 {}，截断", len, MAX_MUZZLE_OFFSET);
+            vec = vec.scale(MAX_MUZZLE_OFFSET / len);
+        }
+        Vec3 look = shooter.getViewVector(1.0F);
+        double forward = vec.dot(look);
+        if (forward < MIN_MUZZLE_FORWARD) {
+            com.tacz.guns.util.TaczDebug.log("resolveMuzzleOrigin: 偏移前向分量过小({}) -> 退回眼睛出生",
+                    String.format("%.3f", forward));
+            return null;
+        }
+        Vec3 target = eye.add(vec);
+        HitResult hit = shooter.level().clip(new ClipContext(eye, target,
+                ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, shooter));
+        if (hit.getType() != HitResult.Type.MISS) {
+            Vec3 toHit = hit.getLocation().subtract(eye);
+            double dist = toHit.length();
+            if (dist < MUZZLE_CLIP_MARGIN * 2) {
+                com.tacz.guns.util.TaczDebug.log("resolveMuzzleOrigin: 枪口位置贴墙(命中距离 {}) -> 退回眼睛出生", String.format("%.3f", dist));
+                return null;
+            }
+            com.tacz.guns.util.TaczDebug.log("resolveMuzzleOrigin: 射线命中，出生点收到命中点前 {} 格（原距离 {}）",
+                    MUZZLE_CLIP_MARGIN, String.format("%.3f", dist));
+            target = eye.add(toHit.normalize().scale(dist - MUZZLE_CLIP_MARGIN));
+        } else {
+            com.tacz.guns.util.TaczDebug.log("resolveMuzzleOrigin: 采用枪口出生点，距眼睛 {} 格", String.format("%.3f", vec.length()));
+        }
+        return target;
+    }
+
     /**
      * Stable continuation check for a scheduled server-side shoot cycle.
      */
@@ -213,10 +286,16 @@ public class ModernKineticGunScriptAPI {
                                     int bulletAmount, float pitch, float yaw) {
         Level world = shooter.level();
         Identifier ammoId = gunData.getAmmoId();
+        // 【枪口出生点】按客户端上报的偏移生成弹丸；校验不过就返回 null，退回"眼睛出生"（改动前行为）
+        Vec3 muzzleOrigin = resolveMuzzleOrigin(shooter, dataHolder.clientMuzzleOffset);
         for (int i = 0; i < bulletAmount; i++) {
             boolean isTracer = bulletData.hasTracerAmmo() && gunOperator.nextBulletIsTracer(bulletData.getTracerCountInterval());
             EntityKineticBullet bullet = new EntityKineticBullet(world, shooter, itemStack, ammoId, gunId,
                     gunDisplayId, isTracer, gunData, bulletData);
+            if (muzzleOrigin != null) {
+                bullet.setPos(muzzleOrigin.x, muzzleOrigin.y, muzzleOrigin.z);
+                bullet.setMuzzleSpawned(true);
+            }
             bullet.applyShotgunDamageSpread(bulletAmount);
             bullet.setShotDamageMultiplier(shotDamageMultiplier);
             abstractGunItem.doBulletSpread(dataHolder, itemStack, shooter, bullet, i, processedSpeed,

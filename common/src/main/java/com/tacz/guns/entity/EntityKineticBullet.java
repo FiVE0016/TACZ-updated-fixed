@@ -143,6 +143,13 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
     private float cameraXRot;
     private float cameraYRot;
     private Vector3f firstPersonRenderOffset;
+    /**
+     * 服务端是否把这发弹丸直接生成在了枪口上。
+     *
+     * <p>为 true 时客户端不再叠加「第一人称曳光弹起点锁枪口」补偿
+     * （{@code EntityBulletRenderer#renderTracerAmmo}），否则枪口偏移会被算两遍。</p>
+     */
+    private boolean muzzleSpawned = false;
     // 发射的枪械 ID
     private Identifier gunId = DefaultAssets.EMPTY_GUN_ID;
     // 枪械display ID
@@ -635,6 +642,7 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
         buffer.writeFloat(this.friction);
         buffer.writeInt(this.pierce);
         buffer.writeBoolean(this.isTracerAmmo);
+        buffer.writeBoolean(this.muzzleSpawned);
         buffer.writeIdentifier(this.gunId);
         buffer.writeIdentifier(this.gunDisplayId);
     }
@@ -660,6 +668,7 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
         this.friction = additionalData.readFloat();
         this.pierce = additionalData.readInt();
         this.isTracerAmmo = additionalData.readBoolean();
+        this.muzzleSpawned = additionalData.readBoolean();
         this.gunId = additionalData.readIdentifier();
         this.gunDisplayId = additionalData.readIdentifier();
     }
@@ -706,6 +715,15 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
 
     public void setFirstPersonRenderOffset(Vector3f originRenderOffset) {
         this.firstPersonRenderOffset = originRenderOffset;
+    }
+
+    /** @return 服务端是否已把这发弹丸生成在枪口上（见 {@code spawnProjectiles}）。 */
+    public boolean isMuzzleSpawned() {
+        return muzzleSpawned;
+    }
+
+    public void setMuzzleSpawned(boolean muzzleSpawned) {
+        this.muzzleSpawned = muzzleSpawned;
     }
 
     public Optional<float[]> getTracerColorOverride() {

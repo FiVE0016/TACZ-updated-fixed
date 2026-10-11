@@ -147,7 +147,9 @@ public class EntityBulletRenderer extends EntityRenderer<EntityKineticBullet, En
                 Matrix4f poseAfterOffset = null;
                 Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
 
-                if (isFirstPerson) {
+                // 【枪口出生点】服务端已把这发弹丸生成在枪口上时，这里不能再叠加一次
+                // 「起点锁枪口」补偿，否则偏移会被算两遍（弹丸会被再推出去一个枪口距离）。
+                if (isFirstPerson && !bullet.isMuzzleSpawned()) {
                     // 【第 26 轮定稿：第一人称曳光弹起点锁定枪口】
                     //
                     // 【空间契约（26.2 字节码逐项核实）】

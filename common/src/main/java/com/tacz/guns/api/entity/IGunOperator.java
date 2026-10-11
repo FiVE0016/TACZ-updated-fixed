@@ -123,6 +123,20 @@ public interface IGunOperator {
     }
 
     /**
+     * 与四参版本相同，但额外携带客户端算出的<b>枪口相对眼睛的世界轴偏移</b>，
+     * 供服务端把弹丸生成在枪口而不是眼睛上。
+     *
+     * <p>默认实现直接忽略该偏移，因此第三方 {@code IGunOperator} 实现无需改动即可继续工作；
+     * 服务端侧还会对偏移做长度/夹角校验与视线射线收口（见 {@code ModernKineticGunScriptAPI}）。</p>
+     *
+     * @param muzzleOffset 枪口相对眼睛的世界轴偏移，可为 null（表示按原行为在眼睛处生成）
+     */
+    default ShootResult shoot(Supplier<Float> pitch, Supplier<Float> yaw, long timestamp, float chargeProgress,
+                              @Nullable org.joml.Vector3f muzzleOffset) {
+        return shoot(pitch, yaw, timestamp, chargeProgress);
+    }
+
+    /**
      * 服务端，该操作者是否受弹药数影响
      *
      * @return 如果为 false，那么开火时不会检查弹药，无论是玩家背包内还是枪械内的

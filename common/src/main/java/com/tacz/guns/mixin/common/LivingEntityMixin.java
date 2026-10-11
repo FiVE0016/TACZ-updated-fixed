@@ -152,6 +152,13 @@ public abstract class LivingEntityMixin extends Entity implements IGunOperator, 
 
     @Unique
     @Override
+    public ShootResult shoot(Supplier<Float> pitch, Supplier<Float> yaw, long timestamp, float chargeProgress,
+                             org.joml.Vector3f muzzleOffset) {
+        return tacz$shoot.shoot(pitch, yaw, timestamp, chargeProgress, muzzleOffset);
+    }
+
+    @Unique
+    @Override
     public boolean needCheckAmmo() {
         return this.tacz$ammoCheck.needCheckAmmo();
     }
